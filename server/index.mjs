@@ -16,6 +16,12 @@ const wcGroupName = process.env.LINE_WC_GROUP_NAME || 'WC☆2026'
 const wcGroupId = process.env.LINE_WC_GROUP_ID || ''
 const knownWcGroupIds = new Set(wcGroupId ? [wcGroupId] : [])
 
+const footballDataToken = process.env.FOOTBALL_DATA_TOKEN || ''
+// football-data.org TLA -> our team id. 47/48 match shortName directly; only
+// Uruguay differs (URY vs our URU).
+const fdTlaOverrides = { URY: 'uruguay' }
+const syncIntervalMs = Number(process.env.SYNC_INTERVAL_MS || 5 * 60 * 1000)
+
 const supabaseUrl = process.env.SUPABASE_URL
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
 const supabase =
@@ -126,6 +132,18 @@ app.get('/api/broadcast-preview', async (req, res) => {
     return null
   })
   res.json({ ok: Boolean(text), text })
+})
+
+// Pull live results from football-data.org. notify=0 backfills silently.
+app.post('/api/sync-results', async (req, res) => {
+  const key = process.env.SYNC_KEY
+  if (key && req.query.key !== key) {
+    res.status(403).json({ ok: false, error: 'forbidden' })
+    return
+  }
+  const notify = req.query.notify !== '0'
+  const out = await syncResultsFromFootballData({ notify }).catch((err) => ({ ok: false, error: err?.message }))
+  res.json(out)
 })
 
 // Read captured group IDs (for one-time WC☆2026 groupId discovery).
@@ -328,6 +346,18 @@ app.listen(port, () => {
   console.log(`[worldcup-trapelko] listening on ${port}`)
 })
 
+// Auto-pull results while the instance is awake (keep it warm with UptimeRobot).
+if (footballDataToken && supabase) {
+  console.log(`[worldcup-trapelko] football-data auto-sync every ${Math.round(syncIntervalMs / 1000)}s`)
+  setInterval(() => {
+    syncResultsFromFootballData({ notify: true })
+      .then((out) => {
+        if (out?.updated) console.log('[sync]', JSON.stringify(out))
+      })
+      .catch((err) => console.error('[sync]', err))
+  }, syncIntervalMs)
+}
+
 async function handleLineEvent(event) {
   if (event.type === 'message' && event.message?.type === 'text') {
     const inWcGroup = await isWorldCupLineGroup(event)
@@ -461,6 +491,95 @@ function lineNotificationTarget(requestedTarget) {
   if (wcGroupId) return wcGroupId
   if (requestedTarget && knownWcGroupIds.has(requestedTarget)) return requestedTarget
   return null
+}
+
+// Fetch FIFA World Cup results from football-data.org, map each finished group
+// match to our fixture (by group + unordered team pair), upsert to Supabase, and
+// have トラペル子 broadcast newly-changed results.
+async function syncResultsFromFootballData({ notify = true } = {}) {
+  if (!footballDataToken) return { ok: false, error: 'FOOTBALL_DATA_TOKEN not set' }
+  if (!supabase) return { ok: false, error: 'supabase not configured' }
+
+  const data = await import('../src/data/worldCup2026.ts')
+  const tlaToId = {}
+  for (const team of data.teams) tlaToId[team.shortName] = team.id
+  Object.assign(tlaToId, fdTlaOverrides)
+
+  const response = await fetch('https://api.football-data.org/v4/competitions/WC/matches', {
+    headers: { 'X-Auth-Token': footballDataToken },
+  })
+  if (!response.ok) return { ok: false, error: `football-data ${response.status}` }
+  const payload = await response.json()
+  const matches = Array.isArray(payload.matches) ? payload.matches : []
+
+  const { data: existingRows } = await supabase.from('match_results').select('match_id, home_score, away_score')
+  const existing = new Map((existingRows || []).map((row) => [row.match_id, row]))
+
+  const changed = []
+  for (const match of matches) {
+    if (match.stage !== 'GROUP_STAGE' || match.status !== 'FINISHED') continue
+    const fullTime = match.score?.fullTime
+    if (!fullTime || fullTime.home == null || fullTime.away == null) continue
+    const homeId = tlaToId[match.homeTeam?.tla]
+    const awayId = tlaToId[match.awayTeam?.tla]
+    if (!homeId || !awayId) continue
+    const groupCode = String(match.group || '').replace('GROUP_', '')
+    const fixture = data.fixtures.find(
+      (f) =>
+        f.group === groupCode &&
+        ((f.homeTeamId === homeId && f.awayTeamId === awayId) || (f.homeTeamId === awayId && f.awayTeamId === homeId)),
+    )
+    if (!fixture) continue
+
+    const orientedHome = fixture.homeTeamId === homeId ? fullTime.home : fullTime.away
+    const orientedAway = fixture.homeTeamId === homeId ? fullTime.away : fullTime.home
+    const prev = existing.get(fixture.id)
+    if (prev && prev.home_score === orientedHome && prev.away_score === orientedAway) continue
+
+    const row = {
+      match_id: fixture.id,
+      home_score: orientedHome,
+      away_score: orientedAway,
+      home_penalty_win: false,
+      away_penalty_win: false,
+      event_payload: {},
+      source: 'football-data',
+      updated_at: new Date().toISOString(),
+    }
+    const { error } = await supabase.from('match_results').upsert(row, { onConflict: 'match_id' })
+    if (!error) changed.push(row)
+  }
+
+  let notified = 0
+  if (notify && changed.length > 0) {
+    const target = lineNotificationTarget()
+    if (target) {
+      if (changed.length <= 5) {
+        for (const row of changed) {
+          const text = await buildResultBroadcast(row).catch(() => null)
+          if (text) {
+            await pushLine(target, [{ type: 'text', text }])
+            notified += 1
+          }
+        }
+      } else {
+        const text = await buildRankingBroadcast(`秘書トラペル子です。WC☆2026 結果まとめ更新（${changed.length}試合）`).catch(() => null)
+        if (text) {
+          await pushLine(target, [{ type: 'text', text }])
+          notified = 1
+        }
+      }
+    }
+  }
+
+  return { ok: true, scanned: matches.length, updated: changed.length, notified }
+}
+
+async function buildRankingBroadcast(headline) {
+  const computed = await computeStandingsFromDb()
+  if (!computed) return null
+  const ranking = computed.memberStandings.map((row, index) => `${index + 1}位 ${row.member.name} ${row.total}pt`).join('\n')
+  return [headline, '———', '現在の参加者ランキング', ranking, publicAppUrl()].join('\n')
 }
 
 // Recompute live standings from Supabase using the same scoring logic as the

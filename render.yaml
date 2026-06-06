@@ -37,3 +37,7 @@ services:
         sync: false
       - key: YAHOO_APP_ID
         sync: false
+      - key: FOOTBALL_DATA_TOKEN
+        sync: false
+      - key: SYNC_KEY
+        sync: false
