@@ -200,9 +200,25 @@ function App() {
     () => calculateMemberStandings(demoMembers, draftSelections, teamStandings),
     [draftSelections, teamStandings],
   )
+  const oddsProbs = useMemo(() => {
+    const out: Record<string, { home: number; draw: number; away: number }> = {}
+    for (const fixture of fixtures) {
+      const o = odds[fixture.id]
+      const h = o?.[fixture.homeTeamId]
+      const a = o?.[fixture.awayTeamId]
+      const d = o?.draw
+      if (!h || !a || !d) continue
+      const ph = 1 / h
+      const pa = 1 / a
+      const pd = 1 / d
+      const sum = ph + pa + pd
+      out[fixture.id] = { home: ph / sum, draw: pd / sum, away: pa / sum }
+    }
+    return out
+  }, [odds])
   const memberProjections = useMemo(
-    () => calculateFinalProjections(demoMembers, draftSelections, groups, liveFixtures, rules, awards, projectionMode),
-    [awards, draftSelections, liveFixtures, projectionMode, rules],
+    () => calculateFinalProjections(demoMembers, draftSelections, groups, liveFixtures, rules, awards, projectionMode, oddsProbs),
+    [awards, draftSelections, liveFixtures, oddsProbs, projectionMode, rules],
   )
   const activeRows = useMemo(() => groupStandings(teamStandings, activeGroup), [teamStandings, activeGroup])
   const activeMatches = useMemo(() => liveFixtures.filter((match) => match.group === activeGroup), [liveFixtures, activeGroup])
@@ -1136,13 +1152,18 @@ function ProjectionGraph({
         <button type="button" className={mode === 'standard' ? 'active' : ''} onClick={() => onModeChange('standard')}>
           標準予想
         </button>
+        <button type="button" className={mode === 'oddsBased' ? 'active' : ''} onClick={() => onModeChange('oddsBased')}>
+          オッズ予想
+        </button>
         <button type="button" className={mode === 'historyDemo' ? 'active' : ''} onClick={() => onModeChange('historyDemo')}>
           過去デモ予想
         </button>
         <p>
-          {mode === 'historyDemo'
-            ? '前回Excelルールの点差感を参考に、全48カ国へ仮の上振れ/下振れポイントを入れて計算中。'
-            : '入力済みの試合結果を固定し、残り試合と大会ボーナスをシード強度ベースで計算中。'}
+          {mode === 'oddsBased'
+            ? 'ブックメーカーのオッズ(勝/分/負の確率)で残り試合を計算中。オッズ未提供の試合はシード強度で補完。'
+            : mode === 'historyDemo'
+              ? '前回Excelルールの点差感を参考に、全48カ国へ仮の上振れ/下振れポイントを入れて計算中。'
+              : '入力済みの試合結果を固定し、残り試合と大会ボーナスをシード強度ベースで計算中。'}
         </p>
       </div>
       {projections.map((projection) => {
@@ -1188,7 +1209,12 @@ function ProjectionGraph({
         <span>平均</span>
         <strong>中央値</strong>
         <em>
-          薄い帯は10-90%レンジ。{mode === 'historyDemo' ? '過去デモ予想は全チームへ仮の上振れ/下振れを入れています。' : '標準予想は未入力の試合と大会ボーナスだけを推定します。'}
+          薄い帯は10-90%レンジ。
+          {mode === 'historyDemo'
+            ? '過去デモ予想は全チームへ仮の上振れ/下振れを入れています。'
+            : mode === 'oddsBased'
+              ? 'オッズ予想はブックメーカーの勝率で残り試合を引いています。'
+              : '標準予想は未入力の試合と大会ボーナスだけを推定します。'}
           900回シミュレーションです。
         </em>
       </div>

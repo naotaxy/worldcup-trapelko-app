@@ -14,7 +14,8 @@ export type MemberProjection = {
   medianRank: number
 }
 
-export type ProjectionMode = 'standard' | 'historyDemo'
+export type ProjectionMode = 'standard' | 'oddsBased' | 'historyDemo'
+export type MatchProb = { home: number; draw: number; away: number }
 
 const simulationCount = 900
 
@@ -26,6 +27,7 @@ export function calculateFinalProjections(
   rules: Rules,
   awards: AwardSettings,
   mode: ProjectionMode = 'standard',
+  oddsProbs: Record<string, MatchProb> = {},
 ): MemberProjection[] {
   const currentTeams = calculateTeamStandings(groups, fixtures, rules, awards)
   const currentMembers = calculateMemberStandings(members, selections, currentTeams)
@@ -42,7 +44,7 @@ export function calculateFinalProjections(
 
   for (let index = 0; index < simulationCount; index += 1) {
     const rng = createRandom(baseSeed + index * 2654435761)
-    const simulatedFixtures = simulateFixtures(groups, fixtures, rng)
+    const simulatedFixtures = simulateFixtures(groups, fixtures, rng, mode, oddsProbs)
     const simulatedAwards = resolveAwards(groups, simulatedFixtures, rules, awards, rng)
     const teamRows = calculateTeamStandings(groups, simulatedFixtures, rules, simulatedAwards)
     const projectedTeamRows =
@@ -79,12 +81,23 @@ export function calculateFinalProjections(
   return projections.sort((a, b) => b.average - a.average || b.median - a.median || a.member.name.localeCompare(b.member.name, 'ja'))
 }
 
-function simulateFixtures(groups: Group[], fixtures: Match[], rng: () => number): Match[] {
+function simulateFixtures(
+  groups: Group[],
+  fixtures: Match[],
+  rng: () => number,
+  mode: ProjectionMode = 'standard',
+  oddsProbs: Record<string, MatchProb> = {},
+): Match[] {
   const currentRows = calculateTeamStandings(groups, fixtures, baselineRules(), emptyAwards())
   const strength = new Map(currentRows.map((row) => [row.team.id, teamStrength(row.team, row.fifaPoints, row.goalDifference)]))
 
   return fixtures.map((match) => {
     if (matchWasPlayed(match)) return match
+    // Odds mode: drive the result by the bookmaker's implied probabilities when
+    // available; otherwise fall back to the seed-strength model.
+    if (mode === 'oddsBased' && oddsProbs[match.id]) {
+      return { ...match, result: simulateResultFromProbs(oddsProbs[match.id], rng) }
+    }
     const homeStrength = strength.get(match.homeTeamId) || 50
     const awayStrength = strength.get(match.awayTeamId) || 50
     return {
@@ -92,6 +105,44 @@ function simulateFixtures(groups: Group[], fixtures: Match[], rng: () => number)
       result: simulateResult(homeStrength, awayStrength, rng),
     }
   })
+}
+
+function simulateResultFromProbs(prob: MatchProb, rng: () => number): MatchResult {
+  const roll = rng()
+  if (roll < prob.draw) {
+    const score = weightedPick(
+      [
+        [0, 0.28],
+        [1, 0.48],
+        [2, 0.2],
+        [3, 0.04],
+      ],
+      rng,
+    )
+    return withEvents({ home: score, away: score }, rng)
+  }
+  const homeWins = roll < prob.draw + prob.home
+  const winnerGoals = weightedPick(
+    [
+      [1, 0.26],
+      [2, 0.43],
+      [3, 0.22],
+      [4, 0.08],
+      [5, 0.01],
+    ],
+    rng,
+  )
+  let loserGoals = weightedPick(
+    [
+      [0, 0.48],
+      [1, 0.4],
+      [2, 0.12],
+    ],
+    rng,
+  )
+  const winnerFinalGoals = Math.max(winnerGoals, loserGoals + 1)
+  if (winnerFinalGoals >= 4 && rng() < 0.35) loserGoals = Math.max(0, loserGoals - 1)
+  return withEvents(homeWins ? { home: winnerFinalGoals, away: loserGoals } : { home: loserGoals, away: winnerFinalGoals }, rng)
 }
 
 function simulateResult(homeStrength: number, awayStrength: number, rng: () => number): MatchResult {
