@@ -15,7 +15,7 @@
     "preview": "vite preview",
     "start": "node server/index.mjs",
     "seed:generate": "node supabase/generate-seed.mjs",
-    "katakana:generate": "node scripts/build-player-katakana.mjs",
+    "player-info:generate": "node scripts/build-player-info.mjs",
     "deploy:pages": "node scripts/deploy-pages.mjs"
   },
   "dependencies": {

@@ -23,7 +23,7 @@ import './App.css'
 import { CountrySlot, type SlotCountry } from './components/CountrySlot'
 import { TournamentScene } from './components/TournamentScene'
 import { squads, squadSource, squadWarnings } from './data/squads'
-import { playerNamesJa } from './data/playerNamesJa'
+import { playerInfoJa } from './data/playerInfoJa'
 import {
   contentLeads,
   defaultRules,
@@ -1392,14 +1392,20 @@ function TeamDetailModal({
 
         <section className="team-modal-squad">
           <h4>代表メンバー ({players.length}人)</h4>
-          {(Object.keys(grouped) as SquadPlayer['position'][]).map((position) => (
-            <div key={position} className="team-modal-squad-line">
-              <span>{positionLabels[position]}</span>
-              <p>{grouped[position].map((player) => playerName(player, team.id)).join('、') || '未登録'}</p>
-            </div>
-          ))}
+          {(Object.keys(grouped) as SquadPlayer['position'][]).map((position) =>
+            grouped[position].length > 0 ? (
+              <div key={position} className="team-modal-squad-group">
+                <span className="squad-pos-label">{positionLabels[position]}</span>
+                <div className="player-chip-grid">
+                  {grouped[position].map((player) => (
+                    <PlayerChip key={player.name} player={player} teamId={team.id} />
+                  ))}
+                </div>
+              </div>
+            ) : null,
+          )}
           <a className="team-modal-source" href={squadSource} target="_blank" rel="noreferrer">
-            選手データ出典
+            選手データ出典(Al Jazeera) / 写真・年齢・身長: Wikimedia Commons・Wikidata
             <ExternalLink size={12} />
           </a>
         </section>
@@ -1488,8 +1494,38 @@ function clearSlotTimer(timerRef: MutableRefObject<number | null>) {
 function playerName(player: SquadPlayer, teamId: string): string {
   // Japan uses the hand-curated map first (exact kanji), everyone else uses the
   // Wikidata-sourced katakana; fall back to the original name when unknown.
-  if (teamId === 'japan') return japanPlayerNamesJa[player.name] || playerNamesJa[player.name] || player.name
-  return playerNamesJa[player.name] || player.name
+  if (teamId === 'japan') return japanPlayerNamesJa[player.name] || playerInfoJa[player.name]?.ja || player.name
+  return playerInfoJa[player.name]?.ja || player.name
+}
+
+function playerAge(dob: string): number | null {
+  const birth = new Date(dob)
+  if (Number.isNaN(birth.getTime())) return null
+  const now = new Date()
+  let age = now.getFullYear() - birth.getFullYear()
+  const monthDiff = now.getMonth() - birth.getMonth()
+  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) age -= 1
+  return age
+}
+
+function PlayerChip({ player, teamId }: { player: SquadPlayer; teamId: string }) {
+  const info = playerInfoJa[player.name]
+  const name = playerName(player, teamId)
+  const age = info?.dob ? playerAge(info.dob) : null
+  const meta = [age != null ? `${age}歳` : null, info?.heightCm ? `${info.heightCm}cm` : null].filter(Boolean).join(' / ')
+  return (
+    <div className="player-chip">
+      {info?.photo ? (
+        <img src={info.photo} alt={name} loading="lazy" />
+      ) : (
+        <span className="player-photo-fallback">{name.slice(0, 1)}</span>
+      )}
+      <div>
+        <strong>{name}</strong>
+        {meta ? <span>{meta}</span> : null}
+      </div>
+    </div>
+  )
 }
 
 function isMatchWinner(match: Match, side: 'home' | 'away'): boolean {

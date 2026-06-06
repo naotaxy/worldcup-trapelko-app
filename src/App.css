@@ -1314,24 +1314,62 @@ input {
   padding-top: 10px;
 }
 
-.team-modal-squad-line {
-  display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
-  gap: 8px;
-  margin-bottom: 6px;
+.team-modal-squad-group {
+  margin-bottom: 12px;
 }
 
-.team-modal-squad-line span {
+.squad-pos-label {
+  display: block;
+  margin-bottom: 5px;
   font-size: 11px;
   font-weight: 700;
   color: #d8c783;
 }
 
-.team-modal-squad-line p {
-  margin: 0;
-  font-size: 12px;
-  line-height: 1.5;
+.player-chip-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.player-chip {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 10px 3px 3px;
+  border-radius: 999px;
+  background: rgba(245, 241, 223, 0.06);
+  border: 1px solid rgba(245, 241, 223, 0.1);
+}
+
+.player-chip img,
+.player-photo-fallback {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  flex: none;
+  object-fit: cover;
+  background: rgba(245, 241, 223, 0.12);
+}
+
+.player-photo-fallback {
+  display: grid;
+  place-items: center;
+  font-size: 13px;
+  font-weight: 700;
   color: #d8d2bb;
+}
+
+.player-chip strong {
+  display: block;
+  font-size: 12px;
+  line-height: 1.25;
+}
+
+.player-chip span {
+  display: block;
+  font-size: 10px;
+  color: #b9b49c;
 }
 
 .team-modal-source {
