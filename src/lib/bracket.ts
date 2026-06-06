@@ -54,7 +54,21 @@ function toTeam(competitor: EspnCompetitor | undefined): BracketTeam {
 }
 
 // schedule: our group fixtureId -> real kickoff ISO (for JST display).
-export type Tournament = { bracket: BracketRound[] | null; schedule: Record<string, string> }
+// odds: fixtureId -> { [teamId]: decimalOdds, draw: decimalOdds } (moneyline).
+export type Tournament = {
+  bracket: BracketRound[] | null
+  schedule: Record<string, string>
+  odds: Record<string, Record<string, number>>
+}
+
+// American odds -> decimal odds (倍率). e.g. -125 -> 1.80, +350 -> 4.50.
+function toDecimalOdds(raw: string | number | undefined | null): number | null {
+  if (raw === undefined || raw === null || raw === '') return null
+  const a = Number(raw)
+  if (!a || Number.isNaN(a)) return null
+  const dec = a > 0 ? a / 100 + 1 : 100 / Math.abs(a) + 1
+  return Math.round(dec * 100) / 100
+}
 const fixturePairKey = (a: string, b: string) => [a, b].sort().join('|')
 const fixtureByPair = new Map(fixtures.map((f) => [fixturePairKey(f.homeTeamId, f.awayTeamId), f.id]))
 
@@ -64,7 +78,7 @@ let cache: Tournament | null = null
 // knockout bracket AND the real kickoff time for each of our group fixtures.
 export async function fetchTournament(): Promise<Tournament> {
   if (cache) return cache
-  const empty: Tournament = { bracket: null, schedule: {} }
+  const empty: Tournament = { bracket: null, schedule: {}, odds: {} }
   try {
     const dates: string[] = []
     for (let d = Date.UTC(2026, 5, 11); d <= Date.UTC(2026, 6, 19); d += 86400000) {
@@ -74,6 +88,7 @@ export async function fetchTournament(): Promise<Tournament> {
 
     const byRound = new Map<string, BracketMatch[]>()
     const schedule: Record<string, string> = {}
+    const odds: Record<string, Record<string, number>> = {}
     await Promise.all(
       dates.map(async (dt) => {
         try {
@@ -92,6 +107,17 @@ export async function fetchTournament(): Promise<Tournament> {
             if (ah && aa) {
               const fid = fixtureByPair.get(fixturePairKey(ah.id, aa.id))
               if (fid && ev.date) schedule[fid] = ev.date
+              const ml = comp?.odds?.[0]?.moneyline
+              if (fid && ml) {
+                const homeDec = toDecimalOdds(ml.home?.close?.odds ?? ml.home?.open?.odds)
+                const awayDec = toDecimalOdds(ml.away?.close?.odds ?? ml.away?.open?.odds)
+                const drawDec = toDecimalOdds(ml.draw?.close?.odds ?? ml.draw?.open?.odds)
+                const entry: Record<string, number> = {}
+                if (homeDec != null) entry[ah.id] = homeDec
+                if (awayDec != null) entry[aa.id] = awayDec
+                if (drawDec != null) entry.draw = drawDec
+                if (Object.keys(entry).length > 0) odds[fid] = entry
+              }
             }
 
             // Knockout round? Add to the bracket.
@@ -122,7 +148,7 @@ export async function fetchTournament(): Promise<Tournament> {
             label: ROUND_JA[s],
             matches: (byRound.get(s) || []).sort((a, b) => a.date.localeCompare(b.date)),
           }))
-    cache = { bracket, schedule }
+    cache = { bracket, schedule, odds }
     return cache
   } catch {
     return empty

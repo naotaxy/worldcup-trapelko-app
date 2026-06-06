@@ -545,6 +545,24 @@ input {
   background: #c9c08a;
 }
 
+.match-odds {
+  margin-left: 5px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  color: #cdd8f3;
+  background: rgba(95, 127, 221, 0.2);
+  border: 1px solid rgba(95, 127, 221, 0.4);
+}
+
+.draw-odds {
+  color: #b9b49c;
+  font-size: 11px;
+  font-weight: 700;
+}
+
 .group-panel {
   order: 1;
 }
@@ -1633,18 +1651,17 @@ input {
   display: grid;
   gap: 7px;
   padding: 11px;
-  border: 1px solid rgba(22, 27, 34, 0.16);
+  border: 1px solid rgba(245, 241, 223, 0.14);
   border-radius: 8px;
-  background: #fbfbfb;
-  color: #202124;
+  background: rgba(245, 241, 223, 0.05);
+  color: #e8e1c9;
   text-align: left;
   cursor: pointer;
-  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.06);
 }
 
 .google-match-card.active {
-  border-color: #1a73e8;
-  box-shadow: inset 3px 0 0 #1a73e8, 0 1px 0 rgba(0, 0, 0, 0.08);
+  border-color: rgba(216, 199, 131, 0.72);
+  box-shadow: inset 3px 0 0 #d8c783;
 }
 
 .google-match-meta {
@@ -1652,20 +1669,20 @@ input {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  color: #5f6368;
+  color: #b9b49c;
   font-size: 12px;
 }
 
 .google-match-meta strong {
-  color: #3c4043;
+  color: #d8d2bb;
   font-size: 12px;
 }
 
 .google-match-meta em {
   padding: 2px 6px;
   border-radius: 999px;
-  background: #eef3fd;
-  color: #1a73e8;
+  background: rgba(216, 199, 131, 0.16);
+  color: #d8c783;
   font-style: normal;
   font-weight: 800;
 }
@@ -1684,7 +1701,7 @@ input {
   align-items: center;
   gap: 9px;
   overflow: hidden;
-  color: #202124;
+  color: #e8e1c9;
   font-weight: 800;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1696,7 +1713,7 @@ input {
   flex: 0 0 auto;
   border-radius: 3px;
   object-fit: cover;
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18);
 }
 
 .team-score-line strong {
@@ -1705,13 +1722,13 @@ input {
   height: 28px;
   place-items: center;
   border-radius: 4px;
-  background: #f1f3f4;
-  color: #202124;
+  background: rgba(245, 241, 223, 0.1);
+  color: #f0d98a;
   font-size: 17px;
 }
 
 .team-score-line.winner strong {
-  background: #202124;
+  background: #2e7d5b;
   color: #fff;
 }
 
@@ -1719,11 +1736,11 @@ input {
   display: flex;
   gap: 12px;
   padding-top: 5px;
-  border-top: 1px solid #edf0f2;
+  border-top: 1px solid rgba(245, 241, 223, 0.1);
 }
 
 .google-match-links a {
-  color: #1a73e8;
+  color: #9fb6d0;
   font-size: 12px;
   font-weight: 800;
   text-decoration: none;

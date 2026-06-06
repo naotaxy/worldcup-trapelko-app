@@ -149,6 +149,7 @@ function App() {
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
   const [playerStats, setPlayerStats] = useState<Record<string, PlayerStat>>({})
   const [schedule, setSchedule] = useState<Record<string, string>>({})
+  const [odds, setOdds] = useState<Record<string, Record<string, number>>>({})
 
   useEffect(() => {
     return () => clearSlotTimer(slotTimerRef)
@@ -158,7 +159,9 @@ function App() {
   useEffect(() => {
     let cancelled = false
     fetchTournament().then((t) => {
-      if (!cancelled && t.schedule) setSchedule(t.schedule)
+      if (cancelled) return
+      if (t.schedule) setSchedule(t.schedule)
+      if (t.odds) setOdds(t.odds)
     })
     return () => {
       cancelled = true
@@ -787,6 +790,9 @@ function App() {
                 kickoff={schedule[match.id]}
                 homeOwner={teamOwnersByTeam.get(match.homeTeamId)}
                 awayOwner={teamOwnersByTeam.get(match.awayTeamId)}
+                homeOdds={odds[match.id]?.[match.homeTeamId]}
+                awayOdds={odds[match.id]?.[match.awayTeamId]}
+                drawOdds={odds[match.id]?.draw}
               />
             ))}
           </div>
@@ -1033,6 +1039,9 @@ function GoogleMatchCard({
   kickoff,
   homeOwner,
   awayOwner,
+  homeOdds,
+  awayOdds,
+  drawOdds,
 }: {
   match: Match
   selected: boolean
@@ -1040,6 +1049,9 @@ function GoogleMatchCard({
   kickoff?: string
   homeOwner?: string
   awayOwner?: string
+  homeOdds?: number
+  awayOdds?: number
+  drawOdds?: number
 }) {
   const homeTeam = teams.find((team) => team.id === match.homeTeamId) || teams[0]
   const awayTeam = teams.find((team) => team.id === match.awayTeamId) || teams[0]
@@ -1050,10 +1062,11 @@ function GoogleMatchCard({
       <div className="google-match-meta">
         <span>{kickoff ? formatJst(kickoff) : formatDateJa(match.date)}</span>
         <strong>グループ{match.group}</strong>
+        {drawOdds ? <span className="draw-odds">引分 {drawOdds.toFixed(2)}倍</span> : null}
         <em>{played ? '終了' : '試合前'}</em>
       </div>
-      <TeamScoreLine team={homeTeam} owner={homeOwner} score={match.result.home} winner={played && isMatchWinner(match, 'home')} />
-      <TeamScoreLine team={awayTeam} owner={awayOwner} score={match.result.away} winner={played && isMatchWinner(match, 'away')} />
+      <TeamScoreLine team={homeTeam} owner={homeOwner} odds={homeOdds} score={match.result.home} winner={played && isMatchWinner(match, 'home')} />
+      <TeamScoreLine team={awayTeam} owner={awayOwner} odds={awayOdds} score={match.result.away} winner={played && isMatchWinner(match, 'away')} />
       <div className="google-match-links">
         <a href={match.highlightUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
           ハイライト
@@ -1066,13 +1079,26 @@ function GoogleMatchCard({
   )
 }
 
-function TeamScoreLine({ team, score, winner, owner }: { team: Team; score: number | null; winner: boolean; owner?: string }) {
+function TeamScoreLine({
+  team,
+  score,
+  winner,
+  owner,
+  odds,
+}: {
+  team: Team
+  score: number | null
+  winner: boolean
+  owner?: string
+  odds?: number
+}) {
   return (
     <div className={winner ? 'team-score-line winner' : 'team-score-line'}>
       <span>
         <img src={flagUrl(team.flag)} alt={`${teamNameJa(team.id)}の国旗`} />
         {teamNameJa(team.id)}
         {owner ? <em className="match-owner">{owner}</em> : null}
+        {odds ? <em className="match-odds">{odds.toFixed(2)}倍</em> : null}
       </span>
       <strong>{score ?? '-'}</strong>
     </div>
