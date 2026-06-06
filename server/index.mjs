@@ -103,9 +103,14 @@ app.post('/api/line/webhook', express.raw({ type: 'application/json' }), async (
     if (event?.source?.type === 'group' && event.source.groupId) captureGroup(event.source.groupId)
   }
 
-  // Optional transparent forward, so the existing トラペル子 bot keeps working
-  // even while this app is temporarily set as the channel webhook for capture.
-  forwardWebhook(bodyText, signature)
+  // When this app owns the channel webhook, forward NON-WC events to the
+  // existing トラペル子 bot so other groups keep all their features. WC☆2026
+  // events are handled here (W杯特化) and not forwarded (avoids double replies).
+  const touchesWcGroup = events.some((e) => {
+    const gid = e?.source?.groupId
+    return gid && (knownWcGroupIds.has(gid) || (wcGroupId && gid === wcGroupId))
+  })
+  if (!touchesWcGroup) forwardWebhook(bodyText, signature)
 
   await Promise.all(events.map(handleLineEvent))
   res.json({ ok: true })
@@ -146,6 +151,16 @@ app.post('/api/sync', async (req, res) => {
     return
   }
   const out = await runAutoSync({ notify: req.query.notify !== '0' }).catch((err) => ({ ok: false, error: err?.message }))
+  res.json(out)
+})
+
+// Recompute tournament awards (champion/runner-up/3rd/top scorer) from ESPN.
+app.post('/api/sync-awards', async (req, res) => {
+  if (!syncAuthorized(req)) {
+    res.status(403).json({ ok: false, error: 'forbidden' })
+    return
+  }
+  const out = await computeAutoAwards({ force: true }).catch((err) => ({ ok: false, error: err?.message }))
   res.json(out)
 })
 
@@ -325,6 +340,7 @@ app.get('/api/state', async (_req, res) => {
       awards: rulesetRes.data?.awards || null,
       selections,
       results,
+      playerStats: playerStatsCache,
     })
   } catch (error) {
     console.error('[server] /api/state', error)
@@ -401,22 +417,11 @@ if (supabase) {
 }
 
 async function handleLineEvent(event) {
-  if (event.type === 'message' && event.message?.type === 'text') {
-    const inWcGroup = await isWorldCupLineGroup(event)
-    if (!inWcGroup) return
-
-    const text = String(event.message.text || '')
-    if (isWicolleText(text)) return
-
-    if (isWorldCupText(text)) {
-      await replyLine(event.replyToken, [
-        {
-          type: 'text',
-          text: buildWorldCupReply(text),
-        },
-      ])
-    }
-  }
+  if (event.type !== 'message' || event.message?.type !== 'text') return
+  const inWcGroup = await isWorldCupLineGroup(event)
+  if (!inWcGroup) return // only the WC☆2026 group is handled here (W杯特化)
+  const reply = await buildWorldCupReply(String(event.message.text || ''))
+  if (reply) await replyLine(event.replyToken, [{ type: 'text', text: reply }])
 }
 
 async function isWorldCupLineGroup(event) {
@@ -433,30 +438,58 @@ async function isWorldCupLineGroup(event) {
   return false
 }
 
-function isWicolleText(text) {
-  return /(ウイコレ|winning\s*roulette|ウイニングルーレット|月次ルール|ルール決め)/i.test(text)
-}
-
 function isWorldCupText(text) {
-  return /(WC|W杯|ワールドカップ|world\s*cup|順位|結果|試合|集計|ドラフト|予選|突破|グループ|ハイライト|ニュース|予想|平均|中央値)/i.test(text)
+  return /(WC|W杯|ワールドカップ|world\s*cup|順位|結果|試合|集計|ドラフト|予選|突破|グループ|ハイライト|ニュース|予想|平均|中央値|トラペル)/i.test(text)
 }
 
-function buildWorldCupReply(text) {
-  const latestResults = memoryState.results
-    .slice(-3)
-    .reverse()
-    .map((row) => `${row.match_id}: ${row.home_score}-${row.away_score}`)
-    .join('\n')
-  if (/結果|試合/i.test(text) && latestResults) {
-    return `秘書トラペル子です。WC☆2026の直近更新です。\n${latestResults}\n詳細と順位表はこちらです。\n${publicAppUrl()}`
+// W杯特化のトラペル子応答。機能のヘルプ・説明が全部できる。
+async function buildWorldCupReply(text) {
+  const t = text || ''
+  if (/(ヘルプ|help|使い方|機能|何ができ|コマンド|メニュー)/i.test(t)) return helpReply()
+  if (/(順位|ランキング|何位|首位|トップ|集計)/.test(t)) return await rankingReply()
+  if (/(結果|速報|スコア|試合)/.test(t)) return await rankingReply()
+  if (/(予想|平均|中央値|シミュ)/.test(t)) {
+    return `秘書トラペル子です。WC☆2026の最終予想グラフ(平均/中央値/レンジ)はこちら。\n${publicAppUrl()}#projection-panel`
   }
-  if (/順位|集計|ランキング/i.test(text)) {
-    return `秘書トラペル子です。WC☆2026の参加者ランキングとチーム別ポイントはこちらです。\n${publicAppUrl()}\nこのグループではW杯集計だけ担当します。`
+  if (/(ルール|配点|点数|得点ルール)/.test(t)) return rulesReply()
+  if (/(選手|代表|メンバー|スタメン|写真|身長|年齢)/.test(t)) {
+    return `秘書トラペル子です。代表選手の写真・年齢・身長は、アプリの順位で国名をタップすると見られます。\n${publicAppUrl()}`
   }
-  if (/予想|平均|中央値/i.test(text)) {
-    return `秘書トラペル子です。WC☆2026の最終予想グラフはこちらです。\n標準予想と、前回データの点差感を入れた過去デモ予想を切り替えて見られます。\n${publicAppUrl()}#projection-panel`
+  if (isWorldCupText(t)) {
+    return `秘書トラペル子です。WC☆2026のドラフト/試合/順位はこちら。\n${publicAppUrl()}\n「ヘルプ」で使い方、「順位」で今のランキングを返します。`
   }
-  return `秘書トラペル子です。WC☆2026のドラフト、試合、順位はこちらです。\n${publicAppUrl()}\n結果更新時はこのグループへ随時報告します。`
+  return null
+}
+
+function helpReply() {
+  return [
+    '秘書トラペル子です。WC☆2026でできること:',
+    '・「順位」… 参加者ランキングと各国ポイント',
+    '・「結果」… 試合結果(得点者/カード/HT/OG)は自動取得',
+    '・「予想」… 最終予想グラフ(平均/中央値)',
+    '・「ルール」… 配点ルール',
+    '・「選手」… 代表選手の写真/年齢/身長(国名タップ)',
+    '試合前は私が見どころを実況、結果が出たら速報します。',
+    '私も参加者の一人として戦ってます！',
+    publicAppUrl(),
+  ].join('\n')
+}
+
+async function rankingReply() {
+  const computed = await computeStandingsFromDb().catch(() => null)
+  if (!computed) return `秘書トラペル子です。WC☆2026の順位はこちら。\n${publicAppUrl()}`
+  const ranking = computed.memberStandings.map((row, index) => `${index + 1}位 ${row.member.name} ${row.total}pt`).join('\n')
+  return ['秘書トラペル子です。WC☆2026 現在の参加者ランキング', ranking, publicAppUrl()].join('\n')
+}
+
+function rulesReply() {
+  return [
+    '秘書トラペル子です。WC☆2026の配点:',
+    '勝5 / PK勝3 / 分1 / 3点差+3 / ハットトリック+5',
+    '決勝T進出+5 / 3位+5 / 準優勝+10 / 優勝+15 / 全敗+10',
+    'MVP+10 / 得点王+10 / 黄4枚-2 / 赤-2 / OG-2 / 日本2倍',
+    publicAppUrl(),
+  ].join('\n')
 }
 
 function isValidLineSignature(bodyText, signature) {
@@ -721,7 +754,8 @@ async function runAutoSync({ notify = true } = {}) {
     ? await syncResultsFromFootballData({ notify, fallbackOnly: true }).catch((err) => ({ ok: false, error: err?.message }))
     : { skipped: true }
   const previews = notify ? await previewUpcomingMatches().catch((err) => ({ ok: false, error: err?.message })) : { skipped: true }
-  return { ok: true, espn, footballData, previews }
+  const awards = await computeAutoAwards().catch((err) => ({ ok: false, error: err?.message }))
+  return { ok: true, espn, footballData, previews, awards }
 }
 
 // Fetch FIFA World Cup results from football-data.org, map each finished group
@@ -1036,6 +1070,105 @@ async function previewUpcomingMatches({ leadMinutes = 45 } = {}) {
     previewed += 1
   }
   return { ok: true, scanned: events.length, previewed }
+}
+
+// Auto-derive tournament awards from ESPN: champion/runner-up/3rd from the
+// knockout results, and top scorer from all goals. MVP has no free data source
+// (FIFA editorial pick), so it stays manual. Throttled (heavy full scan).
+// Per-player stats (goals/yellow/red/own goals) keyed by normalized name, built
+// during the awards scan and exposed via /api/state for the team detail modal.
+let playerStatsCache = {}
+function normName(s) {
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '')
+}
+
+let lastAwardsRun = 0
+async function computeAutoAwards({ force = false } = {}) {
+  if (!supabase) return { ok: false, error: 'supabase not configured' }
+  if (!force && Date.now() - lastAwardsRun < 30 * 60 * 1000) return { ok: true, skipped: true }
+  lastAwardsRun = Date.now()
+
+  const data = await import('../src/data/worldCup2026.ts')
+  const tlaToId = {}
+  for (const team of data.teams) tlaToId[team.shortName] = team.id
+
+  const start = Date.UTC(2026, 5, 11) // 2026-06-11
+  const dates = []
+  for (let d = start; d <= Date.now() + 86400000; d += 86400000) dates.push(ymdUtc(d))
+
+  const goalsByPlayer = {}
+  const stats = {} // normName -> { name, abbr, goals, yellow, red, own }
+  let champion = ''
+  let runnerUp = ''
+  let thirdPlace = ''
+
+  for (const dstr of dates) {
+    const sb = await espnGet(`/scoreboard?dates=${dstr}`)
+    for (const ev of sb?.events || []) {
+      if (!ev.competitions?.[0]?.status?.type?.completed) continue
+      const summary = await espnGet(`/summary?event=${ev.id}`)
+      const sc = summary?.header?.competitions?.[0]
+      if (!sc) continue
+      const roundName = (summary.header?.season?.name || '').trim()
+      const competitors = sc.competitors || []
+      const idToAbbr = {}
+      for (const c of competitors) idToAbbr[c.team.id] = c.team.abbreviation
+      const winner = competitors.find((c) => c.winner)
+      const loser = competitors.find((c) => !c.winner)
+
+      const isFinal = /final$/i.test(roundName) && !/semi|quarter/i.test(roundName)
+      const isThird = /(3rd|third)[ -]?place|play-?off for third/i.test(roundName)
+      if (isFinal && winner && loser) {
+        champion = tlaToId[winner.team.abbreviation] || champion
+        runnerUp = tlaToId[loser.team.abbreviation] || runnerUp
+      }
+      if (isThird && winner) thirdPlace = tlaToId[winner.team.abbreviation] || thirdPlace
+
+      for (const e of summary.keyEvents || []) {
+        const ty = (e.type && e.type.text) || ''
+        const ath = e.participants?.[0]?.athlete
+        if (!ath?.id) continue
+        const key = normName(ath.displayName)
+        const st = stats[key] || (stats[key] = { name: ath.displayName, abbr: idToAbbr[e.team?.id], goals: 0, yellow: 0, red: 0, own: 0 })
+        if (/own goal/i.test(ty)) {
+          st.own += 1
+        } else if (/goal/i.test(ty) || /penalty - scored/i.test(ty)) {
+          const entry = goalsByPlayer[ath.id] || { goals: 0, abbr: idToAbbr[e.team?.id], name: ath.displayName }
+          entry.goals += 1
+          goalsByPlayer[ath.id] = entry
+          st.goals += 1
+        } else if (/red card/i.test(ty)) {
+          st.red += 1
+        } else if (/yellow card/i.test(ty)) {
+          st.yellow += 1
+        }
+      }
+    }
+  }
+  playerStatsCache = stats
+
+  let best = null
+  for (const id of Object.keys(goalsByPlayer)) {
+    const g = goalsByPlayer[id]
+    if (!best || g.goals > best.goals) best = g
+  }
+  const topScorer = best?.abbr ? tlaToId[best.abbr] || '' : ''
+
+  const { data: rs } = await supabase.from('rulesets').select('awards').eq('id', 'default').maybeSingle()
+  const cur = rs?.awards || {}
+  const awards = {
+    championTeamId: champion || cur.championTeamId || '',
+    runnerUpTeamId: runnerUp || cur.runnerUpTeamId || '',
+    thirdPlaceTeamId: thirdPlace || cur.thirdPlaceTeamId || '',
+    mvpTeamId: cur.mvpTeamId || '', // MVP stays manual (no free data source)
+    topScorerTeamId: topScorer || cur.topScorerTeamId || '',
+  }
+  await supabase.from('rulesets').update({ awards, updated_at: new Date().toISOString() }).eq('id', 'default')
+  return { ok: true, awards, topScorer: best ? { name: best.name, goals: best.goals } : null }
 }
 
 function publicAppUrl() {

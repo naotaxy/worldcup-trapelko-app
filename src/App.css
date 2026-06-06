@@ -1487,6 +1487,11 @@ input {
   color: #b9b49c;
 }
 
+.player-chip .player-stat {
+  color: #8fe0c0;
+  font-weight: 700;
+}
+
 .team-modal-source {
   display: inline-flex;
   align-items: center;

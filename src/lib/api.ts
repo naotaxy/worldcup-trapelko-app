@@ -11,12 +11,15 @@ import type { AwardSettings, MatchResult, Rules, TeamSelection } from '../types'
 // Every function swallows network/parse errors and never throws, so a missing
 // or sleeping backend can never break the board.
 
+export type PlayerStat = { name?: string; abbr?: string; goals?: number; yellow?: number; red?: number; own?: number }
+
 export type ServerState = {
   source: 'supabase' | 'static'
   rules?: Rules
   awards?: AwardSettings
   selections?: TeamSelection[]
   results?: Record<string, MatchResult>
+  playerStats?: Record<string, PlayerStat>
 }
 
 export type Bootstrap = {

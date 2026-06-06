@@ -6,20 +6,18 @@ import {
   ExternalLink,
   Gauge,
   Link2,
-  LockKeyhole,
   Medal,
   RotateCcw,
   Save,
   Settings,
   Shuffle,
   Trophy,
-  Users,
   X,
 } from 'lucide-react'
 import './App.css'
 import { CountrySlot, type SlotCountry } from './components/CountrySlot'
 import { TournamentScene } from './components/TournamentScene'
-import { squads, squadSource, squadWarnings } from './data/squads'
+import { squads, squadSource } from './data/squads'
 import { playerInfoJa } from './data/playerInfoJa'
 import {
   contentLeads,
@@ -43,8 +41,7 @@ import {
 } from './logic/score'
 import { calculateFinalProjections, type MemberProjection, type ProjectionMode } from './logic/projection'
 import type { AwardSettings, GroupCode, Match, MatchResult, Rules, SquadPlayer, Team, TeamSelection } from './types'
-import { fetchBootstrap, fetchSharedState, linkLineMember, pushResult, pushRules, type Bootstrap } from './lib/api'
-import { getLineProfile, type LineProfile } from './lib/liff'
+import { fetchSharedState, pushResult, pushRules, type PlayerStat } from './lib/api'
 import { loadLocalState, saveLocalState } from './lib/persistence'
 
 const ruleFields: Array<{ key: keyof Rules; label: string; min: number; max: number; step: number }> = [
@@ -146,10 +143,9 @@ function App() {
   const [slotSpinKey, setSlotSpinKey] = useState(0)
   const [slotPhase, setSlotPhase] = useState<'idle' | 'spinning' | 'ready'>('idle')
   const [slotMessage, setSlotMessage] = useState('参加者を選んでスロットを回してください')
-  const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null)
-  const [lineProfile, setLineProfile] = useState<LineProfile | null>(null)
   const [resultSaveLabel, setResultSaveLabel] = useState('結果を保存')
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
+  const [playerStats, setPlayerStats] = useState<Record<string, PlayerStat>>({})
 
   useEffect(() => {
     return () => clearSlotTimer(slotTimerRef)
@@ -161,14 +157,14 @@ function App() {
   useEffect(() => {
     let cancelled = false
     void (async () => {
-      const [boot, shared] = await Promise.all([fetchBootstrap(), fetchSharedState()])
+      const shared = await fetchSharedState()
       if (cancelled) return
-      if (boot) setBootstrap(boot)
       if (shared) {
         if (shared.rules) setRules(shared.rules)
         if (shared.awards) setAwards(shared.awards)
         if (shared.selections && shared.selections.length > 0) setDraftSelections(shared.selections)
         if (shared.results) setLiveFixtures((current) => applyResultMap(current, shared.results!))
+        if (shared.playerStats) setPlayerStats(shared.playerStats)
       }
     })()
     return () => {
@@ -234,8 +230,6 @@ function App() {
   const slotResultTeam = slotResultId ? teams.find((team) => team.id === slotResultId) || null : null
   const slotCountries = useMemo(() => remainingTeams.map(slotCountryFromTeam), [remainingTeams])
   const slotResultCountry = slotResultTeam ? slotCountryFromTeam(slotResultTeam) : null
-  const activeGroupMeta = groups.find((group) => group.code === activeGroup) || groups[0]
-  const activeSquadCount = activeGroupMeta.teams.reduce((sum, team) => sum + (squads[team.id]?.length || 0), 0)
 
   const applyPreview = () => {
     setLiveFixtures((current) =>
@@ -314,17 +308,6 @@ function App() {
     const ok = await pushResult(selectedMatch.id, selectedMatch.result)
     setResultSaveLabel(ok ? '通知＆保存済み' : 'この端末に保存済み')
     window.setTimeout(() => setResultSaveLabel('結果を保存'), 2600)
-  }
-
-  const handleLineLogin = async () => {
-    const profile = await getLineProfile(bootstrap?.liffId ?? null)
-    if (!profile) return
-    setLineProfile(profile)
-    await linkLineMember({
-      lineUserId: profile.userId,
-      displayName: profile.displayName,
-      pictureUrl: profile.pictureUrl,
-    })
   }
 
   const spinSlot = () => {
@@ -440,10 +423,6 @@ function App() {
           <Gauge size={15} />
           予想
         </a>
-        <a href="#squad-panel">
-          <Users size={15} />
-          代表
-        </a>
         <a href="#draft-slot">
           <Shuffle size={15} />
           救済
@@ -452,22 +431,6 @@ function App() {
           <Settings size={15} />
           ルール
         </a>
-        {lineProfile ? (
-          <span className="line-profile-chip" title={`${lineProfile.displayName}でログイン中`}>
-            {lineProfile.pictureUrl ? <img src={lineProfile.pictureUrl} alt={lineProfile.displayName} /> : <Users size={14} />}
-            {lineProfile.displayName}
-          </span>
-        ) : (
-          <button
-            type="button"
-            className="tab-login"
-            title={bootstrap?.liffId ? 'LINEでログイン' : 'LINEログインは公開後に有効'}
-            onClick={handleLineLogin}
-          >
-            <LockKeyhole size={15} />
-            ログイン
-          </button>
-        )}
       </nav>
 
       <section className="dashboard-grid">
@@ -794,26 +757,6 @@ function App() {
           <ProjectionGraph projections={memberProjections} mode={projectionMode} onModeChange={setProjectionMode} />
         </section>
 
-        <section className="panel squad-panel" id="squad-panel">
-          <PanelTitle
-            icon={<Users size={18} />}
-            title="代表メンバー"
-            note={`${activeGroupMeta.teams.length}代表 / ${activeSquadCount}人登録`}
-          />
-          <div className="squad-grid">
-            {activeGroupMeta.teams.map((team) => (
-              <SquadCard key={team.id} team={team} players={squads[team.id] || []} />
-            ))}
-          </div>
-          <div className="squad-source">
-            <a href={squadSource} target="_blank" rel="noreferrer">
-              登録メンバー出典
-              <ExternalLink size={13} />
-            </a>
-            {squadWarnings.length > 0 ? <span>一部チームは公開記事上の人数差を検知済み</span> : null}
-          </div>
-        </section>
-
         <section className="panel match-panel" id="match-desk">
           <PanelTitle icon={<Bell size={18} />} title="試合・結果" note="Google風カード / LINE通知対象" />
           <div className="google-match-list">
@@ -866,25 +809,25 @@ function App() {
               className={selectedMatch.result.homePenaltyWin ? 'active' : ''}
               onClick={() => setPenaltyWinner('home')}
             >
-              {teamShort(selectedMatch.homeTeamId)}
+              {teamNameJa(selectedMatch.homeTeamId)}
             </button>
             <button
               type="button"
               className={selectedMatch.result.awayPenaltyWin ? 'active' : ''}
               onClick={() => setPenaltyWinner('away')}
             >
-              {teamShort(selectedMatch.awayTeamId)}
+              {teamNameJa(selectedMatch.awayTeamId)}
             </button>
           </div>
           <div className="event-editor">
-            <EventNumber label={`${teamShort(selectedMatch.homeTeamId)} HT`} value={selectedMatch.result.homeHatTricks} onChange={(value) => updateMatchNumber('homeHatTricks', value)} />
-            <EventNumber label={`${teamShort(selectedMatch.awayTeamId)} HT`} value={selectedMatch.result.awayHatTricks} onChange={(value) => updateMatchNumber('awayHatTricks', value)} />
-            <EventNumber label={`${teamShort(selectedMatch.homeTeamId)} 黄`} value={selectedMatch.result.homeYellowCards} onChange={(value) => updateMatchNumber('homeYellowCards', value)} />
-            <EventNumber label={`${teamShort(selectedMatch.awayTeamId)} 黄`} value={selectedMatch.result.awayYellowCards} onChange={(value) => updateMatchNumber('awayYellowCards', value)} />
-            <EventNumber label={`${teamShort(selectedMatch.homeTeamId)} 赤`} value={selectedMatch.result.homeRedCards} onChange={(value) => updateMatchNumber('homeRedCards', value)} />
-            <EventNumber label={`${teamShort(selectedMatch.awayTeamId)} 赤`} value={selectedMatch.result.awayRedCards} onChange={(value) => updateMatchNumber('awayRedCards', value)} />
-            <EventNumber label={`${teamShort(selectedMatch.homeTeamId)} OG`} value={selectedMatch.result.homeOwnGoals} onChange={(value) => updateMatchNumber('homeOwnGoals', value)} />
-            <EventNumber label={`${teamShort(selectedMatch.awayTeamId)} OG`} value={selectedMatch.result.awayOwnGoals} onChange={(value) => updateMatchNumber('awayOwnGoals', value)} />
+            <EventNumber label={`${teamNameJa(selectedMatch.homeTeamId)} ハットトリック`} value={selectedMatch.result.homeHatTricks} onChange={(value) => updateMatchNumber('homeHatTricks', value)} />
+            <EventNumber label={`${teamNameJa(selectedMatch.awayTeamId)} ハットトリック`} value={selectedMatch.result.awayHatTricks} onChange={(value) => updateMatchNumber('awayHatTricks', value)} />
+            <EventNumber label={`${teamNameJa(selectedMatch.homeTeamId)} 黄カード`} value={selectedMatch.result.homeYellowCards} onChange={(value) => updateMatchNumber('homeYellowCards', value)} />
+            <EventNumber label={`${teamNameJa(selectedMatch.awayTeamId)} 黄カード`} value={selectedMatch.result.awayYellowCards} onChange={(value) => updateMatchNumber('awayYellowCards', value)} />
+            <EventNumber label={`${teamNameJa(selectedMatch.homeTeamId)} 赤カード`} value={selectedMatch.result.homeRedCards} onChange={(value) => updateMatchNumber('homeRedCards', value)} />
+            <EventNumber label={`${teamNameJa(selectedMatch.awayTeamId)} 赤カード`} value={selectedMatch.result.awayRedCards} onChange={(value) => updateMatchNumber('awayRedCards', value)} />
+            <EventNumber label={`${teamNameJa(selectedMatch.homeTeamId)} オウンゴール`} value={selectedMatch.result.homeOwnGoals} onChange={(value) => updateMatchNumber('homeOwnGoals', value)} />
+            <EventNumber label={`${teamNameJa(selectedMatch.awayTeamId)} オウンゴール`} value={selectedMatch.result.awayOwnGoals} onChange={(value) => updateMatchNumber('awayOwnGoals', value)} />
           </div>
           <div className="button-row">
             <button type="button" className="text-button" onClick={saveSelectedResult}>
@@ -935,39 +878,6 @@ function App() {
           </button>
         </section>
 
-        <section className="panel selection-panel" id="team-draft">
-          <PanelTitle icon={<Users size={18} />} title="チーム選択" note={`1人${maxTeamsPerMember}チーム`} />
-          <div className="selection-grid">
-            {demoMembers.map((member) => {
-              const owned = draftSelections
-                .filter((selection) => selection.memberId === member.id)
-                .map((selection) => teams.find((team) => team.id === selection.teamId))
-                .filter((team): team is (typeof teams)[number] => Boolean(team))
-
-              return (
-                <article key={member.id} className="selection-card">
-                  <div className="selection-head">
-                    <div className="member-avatar" style={{ '--avatar-color': member.accent } as CSSProperties}>
-                      {member.avatar}
-                    </div>
-                    <div>
-                      <strong>{member.name}</strong>
-                      <span>@{member.lineName}</span>
-                    </div>
-                  </div>
-                  <div className="selection-flags">
-                    {owned.length > 0 ? (
-                      owned.map((team) => <img key={team.id} src={flagUrl(team.flag)} alt={teamNameJa(team.id)} />)
-                    ) : (
-                      <span className="empty-selection">未獲得</span>
-                    )}
-                  </div>
-                </article>
-              )
-            })}
-          </div>
-        </section>
-
         <section className="panel content-panel" id="match-pulse">
           <PanelTitle icon={<Link2 size={18} />} title="ニュース・ハイライト" note="リンク誘導のみ" />
           <div className="content-list">
@@ -1008,6 +918,7 @@ function App() {
                 breakdown={calculateTeamBreakdown(team, groups, liveFixtures, rules, awards)}
                 owners={teamOwnersByTeam.get(team.id) || '未決定'}
                 players={squads[team.id] || []}
+                playerStats={playerStats}
                 remaining={unplayed.length}
                 nextMatch={nextMatch}
                 onClose={() => setSelectedTeamId(null)}
@@ -1172,34 +1083,6 @@ function ProjectionGraph({
   )
 }
 
-function SquadCard({ team, players }: { team: Team; players: SquadPlayer[] }) {
-  const grouped = {
-    GK: players.filter((player) => player.position === 'GK'),
-    DF: players.filter((player) => player.position === 'DF'),
-    MF: players.filter((player) => player.position === 'MF'),
-    FW: players.filter((player) => player.position === 'FW'),
-  }
-
-  return (
-    <details className="squad-card" open={team.id === 'japan'}>
-      <summary>
-        <span>
-          <img src={flagUrl(team.flag)} alt={`${teamNameJa(team.id)}の国旗`} />
-          <strong>{teamNameJa(team.id)}</strong>
-        </span>
-        <em>{players.length}人</em>
-      </summary>
-      <div className="squad-positions">
-        {(Object.keys(grouped) as SquadPlayer['position'][]).map((position) => (
-          <div key={position} className="squad-position">
-            <span>{positionLabels[position]}</span>
-            <p>{grouped[position].map((player) => playerName(player, team.id)).join('、') || '未登録'}</p>
-          </div>
-        ))}
-      </div>
-    </details>
-  )
-}
 
 const confederationJa: Record<string, string> = {
   UEFA: '欧州 (UEFA)',
@@ -1210,11 +1093,20 @@ const confederationJa: Record<string, string> = {
   OFC: 'オセアニア (OFC)',
 }
 
+function normName(s: string): string {
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '')
+}
+
 function TeamDetailModal({
   team,
   breakdown,
   owners,
   players,
+  playerStats,
   remaining,
   nextMatch,
   onClose,
@@ -1223,6 +1115,7 @@ function TeamDetailModal({
   breakdown: TeamBreakdown
   owners: string
   players: SquadPlayer[]
+  playerStats: Record<string, PlayerStat>
   remaining: number
   nextMatch: { date: string; opponentName: string; home: boolean } | null
   onClose: () => void
@@ -1323,7 +1216,7 @@ function TeamDetailModal({
                 <span className="squad-pos-label">{positionLabels[position]}</span>
                 <div className="player-chip-grid">
                   {grouped[position].map((player) => (
-                    <PlayerChip key={player.name} player={player} teamId={team.id} />
+                    <PlayerChip key={player.name} player={player} teamId={team.id} stat={playerStats[normName(player.name)]} />
                   ))}
                 </div>
               </div>
@@ -1341,10 +1234,6 @@ function TeamDetailModal({
 
 function teamName(teamId: string): string {
   return teamNameJa(teamId)
-}
-
-function teamShort(teamId: string): string {
-  return teams.find((team) => team.id === teamId)?.shortName || teamId
 }
 
 function teamNameJa(teamId: string): string {
@@ -1433,11 +1322,17 @@ function playerAge(dob: string): number | null {
   return age
 }
 
-function PlayerChip({ player, teamId }: { player: SquadPlayer; teamId: string }) {
+function PlayerChip({ player, teamId, stat }: { player: SquadPlayer; teamId: string; stat?: PlayerStat }) {
   const info = playerInfoJa[player.name]
   const name = playerName(player, teamId)
   const age = info?.dob ? playerAge(info.dob) : null
-  const meta = [age != null ? `${age}歳` : null, info?.heightCm ? `${info.heightCm}cm` : null].filter(Boolean).join(' / ')
+  const bio = [age != null ? `${age}歳` : null, info?.heightCm ? `${info.heightCm}cm` : null].filter(Boolean).join(' / ')
+  const statParts: string[] = []
+  if (stat?.goals) statParts.push(`得点${stat.goals}`)
+  if (stat?.own) statParts.push(`OG${stat.own}`)
+  if (stat?.yellow) statParts.push(`黄${stat.yellow}`)
+  if (stat?.red) statParts.push(`赤${stat.red}`)
+  const statLine = statParts.join('・')
   return (
     <div className="player-chip">
       {info?.photo ? (
@@ -1447,7 +1342,8 @@ function PlayerChip({ player, teamId }: { player: SquadPlayer; teamId: string })
       )}
       <div>
         <strong>{name}</strong>
-        {meta ? <span>{meta}</span> : null}
+        {bio ? <span>{bio}</span> : null}
+        {statLine ? <span className="player-stat">{statLine}</span> : null}
       </div>
     </div>
   )
