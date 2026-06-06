@@ -1,6 +1,10 @@
 # World Cup Trapelko App
 
-LINEグループから開く、2026ワールドカップのチームドラフト・順位・ルール編集ボードです。
+LINEグループ `WC☆2026` から開く、2026ワールドカップのチームドラフト・順位・ルール編集ボードです。
+
+公開URL (GitHub Pages): https://naotaxy.github.io/worldcup-trapelko-app/
+
+デプロイ手順 (GitHub Pages / Render+Supabase+LINE) は [DEPLOY.md](./DEPLOY.md) を参照。
 
 ## What Is Included
 
