@@ -826,6 +826,7 @@ function App() {
                       >
                         <img src={flagUrl(team.team.flag)} alt="" />
                         {teamNameJa(team.team.id)}
+                        <em className="pill-group">{team.team.group}</em>
                         <strong>{team.fantasyPoints}</strong>
                       </button>
                     ))}
@@ -1042,12 +1043,26 @@ function App() {
         ? (() => {
             const team = teams.find((entry) => entry.id === selectedTeamId)
             if (!team) return null
+            const unplayed = liveFixtures
+              .filter((match) => match.homeTeamId === team.id || match.awayTeamId === team.id)
+              .filter((match) => !(match.result.home !== null && match.result.away !== null))
+              .sort((a, b) => a.date.localeCompare(b.date))
+            const upcoming = unplayed[0]
+            const nextMatch = upcoming
+              ? {
+                  date: upcoming.date,
+                  opponentName: teamNameJa(upcoming.homeTeamId === team.id ? upcoming.awayTeamId : upcoming.homeTeamId),
+                  home: upcoming.homeTeamId === team.id,
+                }
+              : null
             return (
               <TeamDetailModal
                 team={team}
                 breakdown={calculateTeamBreakdown(team, groups, liveFixtures, rules, awards)}
                 owners={teamOwnersByTeam.get(team.id) || '未決定'}
                 players={squads[team.id] || []}
+                remaining={unplayed.length}
+                nextMatch={nextMatch}
                 onClose={() => setSelectedTeamId(null)}
               />
             )
@@ -1275,12 +1290,16 @@ function TeamDetailModal({
   breakdown,
   owners,
   players,
+  remaining,
+  nextMatch,
   onClose,
 }: {
   team: Team
   breakdown: TeamBreakdown
   owners: string
   players: SquadPlayer[]
+  remaining: number
+  nextMatch: { date: string; opponentName: string; home: boolean } | null
   onClose: () => void
 }) {
   const standing = breakdown.standing
@@ -1327,6 +1346,17 @@ function TeamDetailModal({
             <span>勝点{standing.fifaPoints}</span>
           </div>
         ) : null}
+
+        <div className="team-modal-schedule">
+          <span>残り試合 {remaining}</span>
+          {nextMatch ? (
+            <span>
+              次戦 {formatDateJa(nextMatch.date)} {nextMatch.home ? 'vs' : '@'} {nextMatch.opponentName}
+            </span>
+          ) : (
+            <span>予選日程は終了</span>
+          )}
+        </div>
 
         <div className="team-modal-tallies" aria-label="自動取得イベント実績">
           <span>ハットトリック {hatTricks}</span>

@@ -322,7 +322,7 @@ input {
 }
 
 .leaderboard-panel {
-  order: 3;
+  order: 0;
 }
 
 .projection-panel {
@@ -1112,6 +1112,33 @@ input {
   border-left: 1px solid rgba(245, 241, 223, 0.2);
   color: #f0d98a;
   font-size: 11px;
+}
+
+.pill-group {
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  color: #0c120a;
+  background: #c9c08a;
+  border-radius: 4px;
+  padding: 0 4px;
+  line-height: 15px;
+}
+
+.team-modal-schedule {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.team-modal-schedule span {
+  padding: 4px 9px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: rgba(95, 127, 221, 0.14);
+  border: 1px solid rgba(95, 127, 221, 0.4);
+  color: #cdd8f3;
 }
 
 .team-pill-button {
