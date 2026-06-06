@@ -108,6 +108,111 @@ export function calculateMemberStandings(
   return memberRows
 }
 
+export type TeamPointComponent = { key: string; label: string; count: number; points: number }
+export type TeamBreakdown = {
+  total: number
+  components: TeamPointComponent[]
+  standing?: TeamStanding
+  tallies: { hatTricks: number; yellowCards: number; redCards: number; ownGoals: number }
+}
+
+// Explains how a team's fantasyPoints are made up, category by category. Mirrors
+// calculateTeamStandings so the components sum to the same total. Cheap enough to
+// call on demand (one team), so it is kept off the projection hot path.
+export function calculateTeamBreakdown(
+  team: Team,
+  groups: Group[],
+  matches: Match[],
+  rules: Rules,
+  awards: AwardSettings = emptyAwards,
+): TeamBreakdown {
+  const standings = calculateTeamStandings(groups, matches, rules, awards)
+  const standing = standings.find((row) => row.team.id === team.id)
+  const groupMatches = matches.filter((match) => match.group === team.group)
+  const groupComplete = groupMatches.length > 0 && groupMatches.every(matchWasPlayed)
+
+  let wins = 0
+  let pkWins = 0
+  let draws = 0
+  let losses = 0
+  let margin3 = 0
+  let played = 0
+  let hatTricks = 0
+  let yellowCards = 0
+  let yellowQuads = 0
+  let redCards = 0
+  let ownGoals = 0
+
+  for (const match of matches) {
+    if (!matchWasPlayed(match) || match.result.home === null || match.result.away === null) continue
+    const isHome = match.homeTeamId === team.id
+    const isAway = match.awayTeamId === team.id
+    if (!isHome && !isAway) continue
+    played += 1
+    const gf = isHome ? match.result.home : match.result.away
+    const ga = isHome ? match.result.away : match.result.home
+    const myPk = Boolean(isHome ? match.result.homePenaltyWin : match.result.awayPenaltyWin)
+    const oppPk = Boolean(isHome ? match.result.awayPenaltyWin : match.result.homePenaltyWin)
+    hatTricks += Math.max(0, (isHome ? match.result.homeHatTricks : match.result.awayHatTricks) || 0)
+    const yc = Math.max(0, (isHome ? match.result.homeYellowCards : match.result.awayYellowCards) || 0)
+    yellowCards += yc
+    yellowQuads += Math.floor(yc / 4)
+    redCards += Math.max(0, (isHome ? match.result.homeRedCards : match.result.awayRedCards) || 0)
+    ownGoals += Math.max(0, (isHome ? match.result.homeOwnGoals : match.result.awayOwnGoals) || 0)
+
+    const pkWinner = Boolean(myPk && !oppPk)
+    if (gf > ga || pkWinner) {
+      if (pkWinner && gf <= ga) pkWins += 1
+      else {
+        wins += 1
+        if (Math.abs(gf - ga) >= 3) margin3 += 1
+      }
+    } else if (ga > gf || (oppPk && !myPk)) {
+      losses += 1
+    } else {
+      draws += 1
+    }
+  }
+
+  const components: TeamPointComponent[] = []
+  const add = (key: string, label: string, count: number, unit: number) => {
+    if (count === 0 || unit === 0) return
+    components.push({ key, label, count, points: roundPoint(count * unit) })
+  }
+  add('win', '勝ち', wins, rules.win)
+  add('penaltyWin', 'PK勝ち', pkWins, rules.penaltyWin)
+  add('draw', '引分', draws, rules.draw)
+  add('goalMargin3Bonus', '3点差勝ち', margin3, rules.goalMargin3Bonus)
+  add('hatTrickBonus', 'ハットトリック', hatTricks, rules.hatTrickBonus)
+  add('yellowCardsFourPenalty', '黄カード4枚', yellowQuads, rules.yellowCardsFourPenalty)
+  add('redCardPenalty', 'レッドカード', redCards, rules.redCardPenalty)
+  add('ownGoalPenalty', 'オウンゴール', ownGoals, rules.ownGoalPenalty)
+  if (groupComplete && standing && standing.rank >= 1 && standing.rank <= 2) {
+    add('knockout', '決勝T進出', 1, rules.knockoutQualifiedBonus)
+  }
+  if (groupComplete && played > 0 && losses === played) add('allLoss', '全敗', 1, rules.allLossBonus)
+  if (awards.championTeamId === team.id) add('champion', '優勝', 1, rules.championBonus)
+  if (awards.runnerUpTeamId === team.id) add('runnerUp', '準優勝', 1, rules.runnerUpBonus)
+  if (awards.thirdPlaceTeamId === team.id) add('thirdPlace', '3位', 1, rules.thirdPlaceBonus)
+  if (awards.mvpTeamId === team.id) add('mvp', 'MVP', 1, rules.mvpBonus)
+  if (awards.topScorerTeamId === team.id) add('topScorer', '得点王', 1, rules.topScorerBonus)
+
+  const subtotal = components.reduce((sum, component) => sum + component.points, 0)
+  let total = subtotal
+  if (team.id === 'japan' && rules.japanMultiplier !== 1) {
+    const bonus = roundPoint(subtotal * (rules.japanMultiplier - 1))
+    components.push({ key: 'japan', label: `日本${rules.japanMultiplier}倍`, count: 1, points: bonus })
+    total = roundPoint(subtotal * rules.japanMultiplier)
+  }
+
+  return {
+    total: roundPoint(total),
+    components,
+    standing,
+    tallies: { hatTricks, yellowCards, redCards, ownGoals },
+  }
+}
+
 function applyMatch(home: MutableStanding, away: MutableStanding, result: MatchResult, rules: Rules) {
   if (result.home === null || result.away === null) return
   const homeScore = result.home

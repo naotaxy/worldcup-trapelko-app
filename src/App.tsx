@@ -17,6 +17,7 @@ import {
   Shuffle,
   Trophy,
   Users,
+  X,
 } from 'lucide-react'
 import './App.css'
 import { CountrySlot, type SlotCountry } from './components/CountrySlot'
@@ -34,7 +35,15 @@ import {
   teamNamesJa,
   teams,
 } from './data/worldCup2026'
-import { calculateMemberStandings, calculateTeamStandings, flagUrl, groupStandings, matchWasPlayed } from './logic/score'
+import {
+  calculateMemberStandings,
+  calculateTeamBreakdown,
+  calculateTeamStandings,
+  flagUrl,
+  groupStandings,
+  matchWasPlayed,
+  type TeamBreakdown,
+} from './logic/score'
 import { calculateFinalProjections, type MemberProjection, type ProjectionMode } from './logic/projection'
 import type { AwardSettings, GroupCode, Match, MatchResult, Rules, SquadPlayer, Team, TeamSelection, TeamStanding } from './types'
 import { fetchBootstrap, fetchSharedState, linkLineMember, pushResult, pushRules, type Bootstrap } from './lib/api'
@@ -144,6 +153,7 @@ function App() {
   const [bootstrap, setBootstrap] = useState<Bootstrap | null>(null)
   const [lineProfile, setLineProfile] = useState<LineProfile | null>(null)
   const [resultSaveLabel, setResultSaveLabel] = useState('結果を保存')
+  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
 
   useEffect(() => {
     return () => clearSlotTimer(slotTimerRef)
@@ -807,10 +817,17 @@ function App() {
                   </div>
                   <div className="team-pills">
                     {row.teams.slice(0, maxTeamsPerMember).map((team) => (
-                      <span key={team.team.id} className="team-pill">
+                      <button
+                        key={team.team.id}
+                        type="button"
+                        className="team-pill team-pill-button"
+                        onClick={() => setSelectedTeamId(team.team.id)}
+                        title={`${teamNameJa(team.team.id)}の内訳を見る`}
+                      >
                         <img src={flagUrl(team.team.flag)} alt="" />
                         {teamNameJa(team.team.id)}
-                      </span>
+                        <strong>{team.fantasyPoints}</strong>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -1020,6 +1037,22 @@ function App() {
           </div>
         </section>
       </section>
+
+      {selectedTeamId
+        ? (() => {
+            const team = teams.find((entry) => entry.id === selectedTeamId)
+            if (!team) return null
+            return (
+              <TeamDetailModal
+                team={team}
+                breakdown={calculateTeamBreakdown(team, groups, liveFixtures, rules, awards)}
+                owners={teamOwnersByTeam.get(team.id) || '未決定'}
+                players={squads[team.id] || []}
+                onClose={() => setSelectedTeamId(null)}
+              />
+            )
+          })()
+        : null}
     </main>
   )
 }
@@ -1225,6 +1258,123 @@ function SquadCard({ team, players }: { team: Team; players: SquadPlayer[] }) {
         ))}
       </div>
     </details>
+  )
+}
+
+const confederationJa: Record<string, string> = {
+  UEFA: '欧州 (UEFA)',
+  CONMEBOL: '南米 (CONMEBOL)',
+  CAF: 'アフリカ (CAF)',
+  AFC: 'アジア (AFC)',
+  Concacaf: '北中米カリブ (Concacaf)',
+  OFC: 'オセアニア (OFC)',
+}
+
+function TeamDetailModal({
+  team,
+  breakdown,
+  owners,
+  players,
+  onClose,
+}: {
+  team: Team
+  breakdown: TeamBreakdown
+  owners: string
+  players: SquadPlayer[]
+  onClose: () => void
+}) {
+  const standing = breakdown.standing
+  const maxAbs = Math.max(1, ...breakdown.components.map((component) => Math.abs(component.points)))
+  const grouped = {
+    GK: players.filter((player) => player.position === 'GK'),
+    DF: players.filter((player) => player.position === 'DF'),
+    MF: players.filter((player) => player.position === 'MF'),
+    FW: players.filter((player) => player.position === 'FW'),
+  }
+  const { hatTricks, yellowCards, redCards, ownGoals } = breakdown.tallies
+
+  return (
+    <div className="team-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
+      <div className="team-modal" onClick={(event) => event.stopPropagation()}>
+        <header className="team-modal-head">
+          <div>
+            <img src={flagUrl(team.flag)} alt={`${teamNameJa(team.id)}の国旗`} />
+            <div>
+              <strong>{teamNameJa(team.id)}</strong>
+              <span>
+                {confederationJa[team.confederation] || team.confederation} / グループ{team.group} / 第{team.seed}シード
+              </span>
+            </div>
+          </div>
+          <button type="button" className="icon-button" onClick={onClose} aria-label="閉じる">
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="team-modal-score">
+          <span>現在の総ポイント</span>
+          <strong>{breakdown.total}</strong>
+          <em>保有: {owners}</em>
+        </div>
+
+        {standing ? (
+          <div className="team-modal-standing">
+            <span>{standing.played}試</span>
+            <span>{standing.wins}勝</span>
+            <span>{standing.draws}分</span>
+            <span>{standing.losses}敗</span>
+            <span>得失{formatSigned(standing.goalDifference)}</span>
+            <span>勝点{standing.fifaPoints}</span>
+          </div>
+        ) : null}
+
+        <div className="team-modal-tallies" aria-label="自動取得イベント実績">
+          <span>ハットトリック {hatTricks}</span>
+          <span>黄 {yellowCards}</span>
+          <span className={redCards ? 'danger' : ''}>赤 {redCards}</span>
+          <span className={ownGoals ? 'danger' : ''}>OG {ownGoals}</span>
+        </div>
+
+        <section className="team-modal-breakdown">
+          <h4>ポイント内訳</h4>
+          {breakdown.components.length > 0 ? (
+            breakdown.components.map((component) => (
+              <div key={component.key} className="breakdown-row">
+                <span className="breakdown-label">
+                  {component.label}
+                  {component.count > 1 ? ` ×${component.count}` : ''}
+                </span>
+                <div className="breakdown-bar-track">
+                  <div
+                    className={component.points < 0 ? 'breakdown-bar negative' : 'breakdown-bar'}
+                    style={{ width: `${(Math.abs(component.points) / maxAbs) * 100}%` }}
+                  />
+                </div>
+                <strong className={component.points < 0 ? 'negative' : ''}>
+                  {component.points > 0 ? `+${component.points}` : component.points}
+                </strong>
+              </div>
+            ))
+          ) : (
+            <p className="breakdown-empty">まだ加点なし（試合前）</p>
+          )}
+        </section>
+
+        <section className="team-modal-squad">
+          <h4>代表メンバー ({players.length}人)</h4>
+          {(Object.keys(grouped) as SquadPlayer['position'][]).map((position) => (
+            <div key={position} className="team-modal-squad-line">
+              <span>{positionLabels[position]}</span>
+              <p>{grouped[position].map((player) => playerName(player, team.id)).join('、') || '未登録'}</p>
+            </div>
+          ))}
+          <a className="team-modal-source" href={squadSource} target="_blank" rel="noreferrer">
+            選手データ出典
+            <ExternalLink size={12} />
+          </a>
+        </section>
+      </div>
+    </div>
   )
 }
 
