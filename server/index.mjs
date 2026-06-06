@@ -78,17 +78,41 @@ const memoryState = {
   results: [],
 }
 
+const capturedGroups = new Map()
+
 app.post('/api/line/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   const bodyText = req.body.toString('utf8')
-  if (!isValidLineSignature(bodyText, req.get('x-line-signature'))) {
+  const signature = req.get('x-line-signature')
+  if (!isValidLineSignature(bodyText, signature)) {
     res.status(401).json({ ok: false, error: 'invalid LINE signature' })
     return
   }
 
   const payload = JSON.parse(bodyText)
   const events = Array.isArray(payload.events) ? payload.events : []
+
+  // Record any group IDs seen so the WC☆2026 group ID can be captured once,
+  // then read from GET /api/line/captured-groups.
+  for (const event of events) {
+    if (event?.source?.type === 'group' && event.source.groupId) captureGroup(event.source.groupId)
+  }
+
+  // Optional transparent forward, so the existing トラペル子 bot keeps working
+  // even while this app is temporarily set as the channel webhook for capture.
+  forwardWebhook(bodyText, signature)
+
   await Promise.all(events.map(handleLineEvent))
   res.json({ ok: true })
+})
+
+// Read captured group IDs (for one-time WC☆2026 groupId discovery).
+app.get('/api/line/captured-groups', (req, res) => {
+  const key = process.env.LINE_CAPTURE_KEY
+  if (key && req.query.key !== key) {
+    res.status(403).json({ ok: false, error: 'forbidden' })
+    return
+  }
+  res.json({ ok: true, wcGroupName, groups: [...capturedGroups.values()] })
 })
 
 app.use(express.json())
@@ -375,6 +399,30 @@ async function pushLine(to, messages) {
     },
     body: JSON.stringify({ to, messages }),
   })
+}
+
+function captureGroup(groupId) {
+  const entry = capturedGroups.get(groupId) || { groupId, count: 0 }
+  entry.count += 1
+  entry.lastSeen = new Date().toISOString()
+  capturedGroups.set(groupId, entry)
+  if (!entry.groupName) {
+    fetchLineGroupSummary(groupId)
+      .then((summary) => {
+        if (summary?.groupName) entry.groupName = summary.groupName
+      })
+      .catch(() => {})
+  }
+}
+
+function forwardWebhook(bodyText, signature) {
+  const url = process.env.LINE_FORWARD_WEBHOOK_URL
+  if (!url) return
+  fetch(url, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-line-signature': signature || '' },
+    body: bodyText,
+  }).catch(() => {})
 }
 
 async function fetchLineGroupSummary(groupId) {
