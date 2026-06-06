@@ -16,9 +16,8 @@ import {
 } from 'lucide-react'
 import './App.css'
 import { CountrySlot, type SlotCountry } from './components/CountrySlot'
-import { TournamentScene } from './components/TournamentScene'
-import { squads, squadSource } from './data/squads'
 import { playerInfoJa } from './data/playerInfoJa'
+import { pdfCountryInfo, pdfSquads, type PdfPlayer } from './data/wcPdf'
 import {
   defaultRules,
   demoMembers,
@@ -41,7 +40,7 @@ import {
   type TeamBreakdown,
 } from './logic/score'
 import { calculateFinalProjections, type MemberProjection, type ProjectionMode } from './logic/projection'
-import type { AwardSettings, GroupCode, Match, MatchResult, Rules, SquadPlayer, Team, TeamSelection } from './types'
+import type { AwardSettings, GroupCode, Match, MatchResult, Rules, Team, TeamSelection } from './types'
 import { fetchSharedState, pushResult, pushRules, type PlayerStat } from './lib/api'
 import { fetchTournament, type BracketMatch, type BracketRound, type BracketTeam } from './lib/bracket'
 import { loadLocalState, saveLocalState } from './lib/persistence'
@@ -68,40 +67,18 @@ const ruleFields: Array<{ key: keyof Rules; label: string; min: number; max: num
 const maxTeamsPerMember = 8
 const maxOwnersPerTeam = 2
 
-const positionLabels: Record<SquadPlayer['position'], string> = {
+const positionLabels: Record<PdfPlayer['pos'], string> = {
   GK: 'GK',
   DF: 'DF',
   MF: 'MF',
   FW: 'FW',
 }
 
-const japanPlayerNamesJa: Record<string, string> = {
-  'Tomoki Hayakawa': '早川友基',
-  'Keisuke Osako': '大迫敬介',
-  'Zion Suzuki': '鈴木彩艶',
-  'Ko Itakura': '板倉滉',
-  'Hiroki Ito': '伊藤洋輝',
-  'Yuto Nagatomo': '長友佑都',
-  'Ayumu Seko': '瀬古歩夢',
-  'Yukinari Sugawara': '菅原由勢',
-  'Junnosuke Suzuki': '鈴木淳之介',
-  'Shogo Taniguchi': '谷口彰悟',
-  'Takehiro Tomiyasu': '冨安健洋',
-  'Tsuyoshi Watanabe': '渡辺剛',
-  'Ritsu Doan': '堂安律',
-  'Wataru Endo': '遠藤航',
-  'Junya Ito': '伊東純也',
-  'Daichi Kamada': '鎌田大地',
-  'Takefusa Kubo': '久保建英',
-  'Keito Nakamura': '中村敬斗',
-  'Kaishu Sano': '佐野海舟',
-  'Ao Tanaka': '田中碧',
-  'Keisuke Goto': '後藤啓介',
-  'Daizen Maeda': '前田大然',
-  'Koki Ogawa': '小川航基',
-  'Kento Shiogai': '塩貝健人',
-  'Yuito Suzuki': '鈴木唯人',
-  'Ayase Ueda': '上田綺世',
+// Bridge the PDF's katakana squad names to Wikidata-sourced extras: katakana ->
+// { en (for ESPN stat lookup), photo, heightCm, dob }.
+const playerInfoByJa: Record<string, { en: string; photo?: string; heightCm?: number; dob?: string }> = {}
+for (const [en, v] of Object.entries(playerInfoJa)) {
+  if (v.ja && !playerInfoByJa[v.ja]) playerInfoByJa[v.ja] = { en, photo: v.photo, heightCm: v.heightCm, dob: v.dob }
 }
 
 const defaultAwards: AwardSettings = {
@@ -437,7 +414,20 @@ function App() {
 
   return (
     <main className="app-shell">
-      <TournamentScene activeGroup={activeGroup} />
+      <div className="fifa-bg" aria-hidden="true">
+        <div className="fifa-arc fifa-arc-tl" />
+        <div className="fifa-arc fifa-arc-br" />
+        <div className="fifa-stars fifa-stars-tl">
+          <span className="fifa-star" />
+          <span className="fifa-star white" />
+          <span className="fifa-star" />
+        </div>
+        <div className="fifa-stars fifa-stars-br">
+          <span className="fifa-star white" />
+          <span className="fifa-star" />
+          <span className="fifa-star white" />
+        </div>
+      </div>
 
       <nav className="mobile-section-tabs" aria-label="sections">
         <a href="#match-desk">
@@ -949,10 +939,12 @@ function App() {
                 team={team}
                 breakdown={calculateTeamBreakdown(team, groups, liveFixtures, rules, awards)}
                 owners={teamOwnersByTeam.get(team.id) || '未決定'}
-                players={squads[team.id] || []}
+                players={pdfSquads[team.id] || []}
                 playerStats={playerStats}
                 fifaRank={fifaRanking[team.id]}
                 wcHistory={worldCupHistory[team.id]}
+                summary={pdfCountryInfo[team.id]?.summary}
+                coach={pdfCountryInfo[team.id]?.coach}
                 remaining={unplayed.length}
                 nextMatch={nextMatch}
                 onClose={() => setSelectedTeamId(null)}
@@ -1248,6 +1240,8 @@ function TeamDetailModal({
   playerStats,
   fifaRank,
   wcHistory,
+  summary,
+  coach,
   remaining,
   nextMatch,
   onClose,
@@ -1255,10 +1249,12 @@ function TeamDetailModal({
   team: Team
   breakdown: TeamBreakdown
   owners: string
-  players: SquadPlayer[]
+  players: PdfPlayer[]
   playerStats: Record<string, PlayerStat>
   fifaRank?: number
   wcHistory?: string
+  summary?: string
+  coach?: string
   remaining: number
   nextMatch: {
     date: string
@@ -1273,10 +1269,10 @@ function TeamDetailModal({
   const standing = breakdown.standing
   const maxAbs = Math.max(1, ...breakdown.components.map((component) => Math.abs(component.points)))
   const grouped = {
-    GK: players.filter((player) => player.position === 'GK'),
-    DF: players.filter((player) => player.position === 'DF'),
-    MF: players.filter((player) => player.position === 'MF'),
-    FW: players.filter((player) => player.position === 'FW'),
+    GK: players.filter((player) => player.pos === 'GK'),
+    DF: players.filter((player) => player.pos === 'DF'),
+    MF: players.filter((player) => player.pos === 'MF'),
+    FW: players.filter((player) => player.pos === 'FW'),
   }
   const { hatTricks, yellowCards, redCards, ownGoals } = breakdown.tallies
 
@@ -1291,6 +1287,7 @@ function TeamDetailModal({
               <span>
                 {confederationJa[team.confederation] || team.confederation} / グループ{team.group} / 第{team.seed}シード
                 {fifaRank ? ` / FIFAランキング ${fifaRank}位` : ''}
+                {coach ? ` / 監督 ${coach}` : ''}
               </span>
             </div>
           </div>
@@ -1306,6 +1303,7 @@ function TeamDetailModal({
         </div>
 
         {wcHistory ? <div className="team-modal-history">過去W杯: {wcHistory}</div> : null}
+        {summary ? <p className="team-modal-summary">{summary}</p> : null}
 
         {standing ? (
           <div className="team-modal-standing">
@@ -1369,13 +1367,13 @@ function TeamDetailModal({
 
         <section className="team-modal-squad">
           <h4>代表メンバー ({players.length}人)</h4>
-          {(Object.keys(grouped) as SquadPlayer['position'][]).map((position) =>
+          {(Object.keys(grouped) as PdfPlayer['pos'][]).map((position) =>
             grouped[position].length > 0 ? (
               <div key={position} className="team-modal-squad-group">
                 <span className="squad-pos-label">{positionLabels[position]}</span>
                 <div className="player-chip-grid">
                   {grouped[position].map((player) => (
-                    <PlayerChip key={player.name} player={player} teamId={team.id} stat={playerStats[normName(player.name)]} />
+                    <PlayerChip key={`${player.name}-${player.club ?? ''}`} player={player} playerStats={playerStats} />
                   ))}
                 </div>
               </div>
@@ -1390,10 +1388,7 @@ function TeamDetailModal({
             ゲキサカで{teamNameJa(team.id)}代表の記事を読む
             <ExternalLink size={12} />
           </a>
-          <a className="team-modal-source" href={squadSource} target="_blank" rel="noreferrer">
-            選手データ出典(Al Jazeera) / 写真・年齢・身長: Wikimedia Commons・Wikidata
-            <ExternalLink size={12} />
-          </a>
+          <span className="team-modal-credit">選手名簿・監督・解説: 配布資料 / 写真・年齢・身長: Wikidata・Wikimedia Commons</span>
         </section>
       </div>
     </div>
@@ -1473,13 +1468,6 @@ function clearSlotTimer(timerRef: MutableRefObject<number | null>) {
   timerRef.current = null
 }
 
-function playerName(player: SquadPlayer, teamId: string): string {
-  // Japan uses the hand-curated map first (exact kanji), everyone else uses the
-  // Wikidata-sourced katakana; fall back to the original name when unknown.
-  if (teamId === 'japan') return japanPlayerNamesJa[player.name] || playerInfoJa[player.name]?.ja || player.name
-  return playerInfoJa[player.name]?.ja || player.name
-}
-
 function playerAge(dob: string): number | null {
   const birth = new Date(dob)
   if (Number.isNaN(birth.getTime())) return null
@@ -1490,13 +1478,15 @@ function playerAge(dob: string): number | null {
   return age
 }
 
-function PlayerChip({ player, teamId, stat }: { player: SquadPlayer; teamId: string; stat?: PlayerStat }) {
-  const info = playerInfoJa[player.name]
-  const name = playerName(player, teamId)
+function PlayerChip({ player, playerStats }: { player: PdfPlayer; playerStats: Record<string, PlayerStat> }) {
+  // player.name is the PDF katakana name; bridge to Wikidata extras (photo/age/
+  // height) and to ESPN per-player stats (via the English name) where available.
+  const info = playerInfoByJa[player.name]
   const age = info?.dob ? playerAge(info.dob) : null
-  const bio = [age != null ? `${age}歳` : null, info?.heightCm ? `${info.heightCm}cm` : null, info?.club || null]
+  const bio = [age != null ? `${age}歳` : null, info?.heightCm ? `${info.heightCm}cm` : null, player.club || null]
     .filter(Boolean)
     .join(' / ')
+  const stat = info?.en ? playerStats[normName(info.en)] : undefined
   const statParts: string[] = []
   if (stat?.goals) statParts.push(`得点${stat.goals}`)
   if (stat?.own) statParts.push(`OG${stat.own}`)
@@ -1506,12 +1496,12 @@ function PlayerChip({ player, teamId, stat }: { player: SquadPlayer; teamId: str
   return (
     <div className="player-chip">
       {info?.photo ? (
-        <img src={info.photo} alt={name} loading="lazy" />
+        <img src={info.photo} alt={player.name} loading="lazy" />
       ) : (
-        <span className="player-photo-fallback">{name.slice(0, 1)}</span>
+        <span className="player-photo-fallback">{player.name.slice(0, 1)}</span>
       )}
       <div>
-        <strong>{name}</strong>
+        <strong>{player.name}</strong>
         {bio ? <span>{bio}</span> : null}
         {statLine ? <span className="player-stat">{statLine}</span> : null}
       </div>
