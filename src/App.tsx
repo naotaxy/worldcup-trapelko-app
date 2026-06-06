@@ -43,7 +43,7 @@ import {
 import { calculateFinalProjections, type MemberProjection, type ProjectionMode } from './logic/projection'
 import type { AwardSettings, GroupCode, Match, MatchResult, Rules, SquadPlayer, Team, TeamSelection } from './types'
 import { fetchSharedState, pushResult, pushRules, type PlayerStat } from './lib/api'
-import { fetchBracket, type BracketMatch, type BracketRound, type BracketTeam } from './lib/bracket'
+import { fetchTournament, type BracketMatch, type BracketRound, type BracketTeam } from './lib/bracket'
 import { loadLocalState, saveLocalState } from './lib/persistence'
 
 const ruleFields: Array<{ key: keyof Rules; label: string; min: number; max: number; step: number }> = [
@@ -148,9 +148,21 @@ function App() {
   const [resultSaveLabel, setResultSaveLabel] = useState('結果を保存')
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
   const [playerStats, setPlayerStats] = useState<Record<string, PlayerStat>>({})
+  const [schedule, setSchedule] = useState<Record<string, string>>({})
 
   useEffect(() => {
     return () => clearSlotTimer(slotTimerRef)
+  }, [])
+
+  // Real kickoff times (JST) for every fixture, from ESPN (free, CORS).
+  useEffect(() => {
+    let cancelled = false
+    fetchTournament().then((t) => {
+      if (!cancelled && t.schedule) setSchedule(t.schedule)
+    })
+    return () => {
+      cancelled = true
+    }
   }, [])
 
   // Device-local state is loaded via the lazy initializers above. Here we pull
@@ -772,6 +784,9 @@ function App() {
                 match={match}
                 selected={selectedMatch.id === match.id}
                 onSelect={() => setSelectedMatchId(match.id)}
+                kickoff={schedule[match.id]}
+                homeOwner={teamOwnersByTeam.get(match.homeTeamId)}
+                awayOwner={teamOwnersByTeam.get(match.awayTeamId)}
               />
             ))}
           </div>
@@ -916,6 +931,7 @@ function App() {
             const nextMatch = upcoming
               ? {
                   date: upcoming.date,
+                  kickoff: schedule[upcoming.id],
                   opponentName: teamNameJa(upcoming.homeTeamId === team.id ? upcoming.awayTeamId : upcoming.homeTeamId),
                   home: upcoming.homeTeamId === team.id,
                 }
@@ -944,9 +960,9 @@ function KnockoutBracket() {
 
   useEffect(() => {
     let cancelled = false
-    fetchBracket().then((result) => {
+    fetchTournament().then((result) => {
       if (cancelled) return
-      setRounds(result)
+      setRounds(result.bracket)
       setLoaded(true)
     })
     return () => {
@@ -978,8 +994,10 @@ function KnockoutBracket() {
 }
 
 function BracketCard({ match }: { match: BracketMatch }) {
+  const when = formatJst(match.date)
   return (
     <div className={match.status === 'post' ? 'bracket-card done' : 'bracket-card'}>
+      {when ? <div className="bracket-date">{when}</div> : null}
       <BracketTeamRow team={match.home} />
       <BracketTeamRow team={match.away} />
     </div>
@@ -1008,7 +1026,21 @@ function PanelTitle({ icon, title, note }: { icon: ReactNode; title: string; not
   )
 }
 
-function GoogleMatchCard({ match, selected, onSelect }: { match: Match; selected: boolean; onSelect: () => void }) {
+function GoogleMatchCard({
+  match,
+  selected,
+  onSelect,
+  kickoff,
+  homeOwner,
+  awayOwner,
+}: {
+  match: Match
+  selected: boolean
+  onSelect: () => void
+  kickoff?: string
+  homeOwner?: string
+  awayOwner?: string
+}) {
   const homeTeam = teams.find((team) => team.id === match.homeTeamId) || teams[0]
   const awayTeam = teams.find((team) => team.id === match.awayTeamId) || teams[0]
   const played = matchWasPlayed(match)
@@ -1016,12 +1048,12 @@ function GoogleMatchCard({ match, selected, onSelect }: { match: Match; selected
   return (
     <button type="button" className={selected ? 'google-match-card active' : 'google-match-card'} onClick={onSelect}>
       <div className="google-match-meta">
-        <span>{formatDateJa(match.date)}</span>
+        <span>{kickoff ? formatJst(kickoff) : formatDateJa(match.date)}</span>
         <strong>グループ{match.group}</strong>
         <em>{played ? '終了' : '試合前'}</em>
       </div>
-      <TeamScoreLine team={homeTeam} score={match.result.home} winner={played && isMatchWinner(match, 'home')} />
-      <TeamScoreLine team={awayTeam} score={match.result.away} winner={played && isMatchWinner(match, 'away')} />
+      <TeamScoreLine team={homeTeam} owner={homeOwner} score={match.result.home} winner={played && isMatchWinner(match, 'home')} />
+      <TeamScoreLine team={awayTeam} owner={awayOwner} score={match.result.away} winner={played && isMatchWinner(match, 'away')} />
       <div className="google-match-links">
         <a href={match.highlightUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
           ハイライト
@@ -1034,12 +1066,13 @@ function GoogleMatchCard({ match, selected, onSelect }: { match: Match; selected
   )
 }
 
-function TeamScoreLine({ team, score, winner }: { team: Team; score: number | null; winner: boolean }) {
+function TeamScoreLine({ team, score, winner, owner }: { team: Team; score: number | null; winner: boolean; owner?: string }) {
   return (
     <div className={winner ? 'team-score-line winner' : 'team-score-line'}>
       <span>
         <img src={flagUrl(team.flag)} alt={`${teamNameJa(team.id)}の国旗`} />
         {teamNameJa(team.id)}
+        {owner ? <em className="match-owner">{owner}</em> : null}
       </span>
       <strong>{score ?? '-'}</strong>
     </div>
@@ -1183,7 +1216,7 @@ function TeamDetailModal({
   players: SquadPlayer[]
   playerStats: Record<string, PlayerStat>
   remaining: number
-  nextMatch: { date: string; opponentName: string; home: boolean } | null
+  nextMatch: { date: string; kickoff?: string; opponentName: string; home: boolean } | null
   onClose: () => void
 }) {
   const standing = breakdown.standing
@@ -1235,7 +1268,8 @@ function TeamDetailModal({
           <span>残り試合 {remaining}</span>
           {nextMatch ? (
             <span>
-              次戦 {formatDateJa(nextMatch.date)} {nextMatch.home ? 'vs' : '@'} {nextMatch.opponentName}
+              次戦 {nextMatch.kickoff ? formatJst(nextMatch.kickoff) : formatDateJa(nextMatch.date)}{' '}
+              {nextMatch.home ? 'vs' : '@'} {nextMatch.opponentName}
             </span>
           ) : (
             <span>予選日程は終了</span>
@@ -1425,6 +1459,23 @@ function formatDateJa(date: string): string {
   const parsed = new Date(`${date}T00:00:00`)
   if (Number.isNaN(parsed.getTime())) return date
   return new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' }).format(parsed)
+}
+
+// Real kickoff time in Japan time (JST), from an ISO timestamp.
+function formatJst(iso?: string): string {
+  if (!iso) return ''
+  const parsed = new Date(iso)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return (
+    new Intl.DateTimeFormat('ja-JP', {
+      timeZone: 'Asia/Tokyo',
+      month: 'numeric',
+      day: 'numeric',
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(parsed) + ' JST'
+  )
 }
 
 function formatSigned(value: number): string {

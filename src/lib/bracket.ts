@@ -3,7 +3,7 @@
 // 2nd Place", "Round of 32 1 Winner") and fills in real teams + scores as the
 // tournament progresses. Works on both the Render and static (Pages) builds.
 import { flagUrl } from '../logic/score'
-import { teamNamesJa, teams } from '../data/worldCup2026'
+import { fixtures, teamNamesJa, teams } from '../data/worldCup2026'
 
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world'
 const ROUND_ORDER = ['round-of-32', 'round-of-16', 'quarterfinals', 'semifinals', '3rd-place-match', 'final']
@@ -53,18 +53,27 @@ function toTeam(competitor: EspnCompetitor | undefined): BracketTeam {
   }
 }
 
-let cache: BracketRound[] | null = null
+// schedule: our group fixtureId -> real kickoff ISO (for JST display).
+export type Tournament = { bracket: BracketRound[] | null; schedule: Record<string, string> }
+const fixturePairKey = (a: string, b: string) => [a, b].sort().join('|')
+const fixtureByPair = new Map(fixtures.map((f) => [fixturePairKey(f.homeTeamId, f.awayTeamId), f.id]))
 
-export async function fetchBracket(): Promise<BracketRound[] | null> {
+let cache: Tournament | null = null
+
+// One pass over the whole tournament (group + knockout) from ESPN. Builds the
+// knockout bracket AND the real kickoff time for each of our group fixtures.
+export async function fetchTournament(): Promise<Tournament> {
   if (cache) return cache
+  const empty: Tournament = { bracket: null, schedule: {} }
   try {
     const dates: string[] = []
-    for (let d = Date.UTC(2026, 5, 28); d <= Date.UTC(2026, 6, 19); d += 86400000) {
+    for (let d = Date.UTC(2026, 5, 11); d <= Date.UTC(2026, 6, 19); d += 86400000) {
       const x = new Date(d)
       dates.push(`${x.getUTCFullYear()}${String(x.getUTCMonth() + 1).padStart(2, '0')}${String(x.getUTCDate()).padStart(2, '0')}`)
     }
 
     const byRound = new Map<string, BracketMatch[]>()
+    const schedule: Record<string, string> = {}
     await Promise.all(
       dates.map(async (dt) => {
         try {
@@ -72,21 +81,32 @@ export async function fetchBracket(): Promise<BracketRound[] | null> {
           if (!res.ok) return
           const data = await res.json()
           for (const ev of data.events || []) {
-            const slug = ev?.season?.slug
-            if (!ROUND_ORDER.includes(slug)) continue
             const comp = ev.competitions?.[0]
             const home = comp?.competitors?.find((c: EspnCompetitor) => c.homeAway === 'home')
             const away = comp?.competitors?.find((c: EspnCompetitor) => c.homeAway === 'away')
             if (!home || !away) continue
-            const list = byRound.get(slug) || []
-            list.push({
-              id: String(ev.id),
-              date: ev.date,
-              status: comp?.status?.type?.state || 'pre',
-              home: toTeam(home),
-              away: toTeam(away),
-            })
-            byRound.set(slug, list)
+
+            // Group fixture? Map its real kickoff to our fixture id.
+            const ah = teamByAbbr.get(home.team?.abbreviation || '')
+            const aa = teamByAbbr.get(away.team?.abbreviation || '')
+            if (ah && aa) {
+              const fid = fixtureByPair.get(fixturePairKey(ah.id, aa.id))
+              if (fid && ev.date) schedule[fid] = ev.date
+            }
+
+            // Knockout round? Add to the bracket.
+            const slug = ev?.season?.slug
+            if (ROUND_ORDER.includes(slug)) {
+              const list = byRound.get(slug) || []
+              list.push({
+                id: String(ev.id),
+                date: ev.date,
+                status: comp?.status?.type?.state || 'pre',
+                home: toTeam(home),
+                away: toTeam(away),
+              })
+              byRound.set(slug, list)
+            }
           }
         } catch {
           // ignore a single date failure
@@ -94,15 +114,17 @@ export async function fetchBracket(): Promise<BracketRound[] | null> {
       }),
     )
 
-    if (byRound.size === 0) return null
-    const rounds = ROUND_ORDER.filter((s) => byRound.has(s)).map((s) => ({
-      slug: s,
-      label: ROUND_JA[s],
-      matches: (byRound.get(s) || []).sort((a, b) => a.date.localeCompare(b.date)),
-    }))
-    cache = rounds
-    return rounds
+    const bracket =
+      byRound.size === 0
+        ? null
+        : ROUND_ORDER.filter((s) => byRound.has(s)).map((s) => ({
+            slug: s,
+            label: ROUND_JA[s],
+            matches: (byRound.get(s) || []).sort((a, b) => a.date.localeCompare(b.date)),
+          }))
+    cache = { bracket, schedule }
+    return cache
   } catch {
-    return null
+    return empty
   }
 }

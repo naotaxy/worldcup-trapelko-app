@@ -527,6 +527,24 @@ input {
   color: #f0d98a;
 }
 
+.bracket-date {
+  padding: 3px 8px;
+  font-size: 10px;
+  color: #b9b49c;
+  border-bottom: 1px solid rgba(245, 241, 223, 0.08);
+}
+
+.match-owner {
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-style: normal;
+  font-size: 10px;
+  font-weight: 700;
+  color: #0c120a;
+  background: #c9c08a;
+}
+
 .group-panel {
   order: 1;
 }
