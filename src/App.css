@@ -1624,12 +1624,17 @@ input {
 }
 
 .team-modal-source {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 4px;
   margin-top: 8px;
   font-size: 11px;
   color: #9fb6d0;
+}
+
+.team-modal-source.gekisaka {
+  font-weight: 700;
+  color: #6fbf73;
 }
 
 .match-controls {

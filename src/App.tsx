@@ -5,7 +5,6 @@ import {
   Bell,
   ExternalLink,
   Gauge,
-  Link2,
   Medal,
   Network,
   RotateCcw,
@@ -21,10 +20,10 @@ import { TournamentScene } from './components/TournamentScene'
 import { squads, squadSource } from './data/squads'
 import { playerInfoJa } from './data/playerInfoJa'
 import {
-  contentLeads,
   defaultRules,
   demoMembers,
   demoSelections,
+  fifaRanking,
   fixtures,
   groups,
   previewResults,
@@ -907,22 +906,6 @@ function App() {
           </button>
         </section>
 
-        <section className="panel content-panel" id="match-pulse">
-          <PanelTitle icon={<Link2 size={18} />} title="ニュース・ハイライト" note="リンク誘導のみ" />
-          <div className="content-list">
-            {contentLeads.map((lead) => (
-              <a key={lead.id} href={lead.url} target="_blank" rel="noreferrer" className="content-lead">
-                <span>{lead.label}</span>
-                <strong>{lead.match}</strong>
-                <p>{lead.summary}</p>
-                <small>
-                  {lead.source}
-                  <ExternalLink size={13} />
-                </small>
-              </a>
-            ))}
-          </div>
-        </section>
       </section>
 
       {selectedTeamId
@@ -940,6 +923,8 @@ function App() {
                   kickoff: schedule[upcoming.id],
                   opponentName: teamNameJa(upcoming.homeTeamId === team.id ? upcoming.awayTeamId : upcoming.homeTeamId),
                   home: upcoming.homeTeamId === team.id,
+                  winOdds: odds[upcoming.id]?.[team.id],
+                  drawOdds: odds[upcoming.id]?.draw,
                 }
               : null
             return (
@@ -949,6 +934,7 @@ function App() {
                 owners={teamOwnersByTeam.get(team.id) || '未決定'}
                 players={squads[team.id] || []}
                 playerStats={playerStats}
+                fifaRank={fifaRanking[team.id]}
                 remaining={unplayed.length}
                 nextMatch={nextMatch}
                 onClose={() => setSelectedTeamId(null)}
@@ -1232,6 +1218,7 @@ function TeamDetailModal({
   owners,
   players,
   playerStats,
+  fifaRank,
   remaining,
   nextMatch,
   onClose,
@@ -1241,8 +1228,16 @@ function TeamDetailModal({
   owners: string
   players: SquadPlayer[]
   playerStats: Record<string, PlayerStat>
+  fifaRank?: number
   remaining: number
-  nextMatch: { date: string; kickoff?: string; opponentName: string; home: boolean } | null
+  nextMatch: {
+    date: string
+    kickoff?: string
+    opponentName: string
+    home: boolean
+    winOdds?: number
+    drawOdds?: number
+  } | null
   onClose: () => void
 }) {
   const standing = breakdown.standing
@@ -1265,6 +1260,7 @@ function TeamDetailModal({
               <strong>{teamNameJa(team.id)}</strong>
               <span>
                 {confederationJa[team.confederation] || team.confederation} / グループ{team.group} / 第{team.seed}シード
+                {fifaRank ? ` / FIFAランキング ${fifaRank}位` : ''}
               </span>
             </div>
           </div>
@@ -1300,6 +1296,11 @@ function TeamDetailModal({
           ) : (
             <span>予選日程は終了</span>
           )}
+          {nextMatch?.winOdds ? (
+            <span>
+              勝ち {nextMatch.winOdds.toFixed(2)}倍{nextMatch.drawOdds ? ` / 引分 ${nextMatch.drawOdds.toFixed(2)}倍` : ''}
+            </span>
+          ) : null}
         </div>
 
         <div className="team-modal-tallies" aria-label="自動取得イベント実績">
@@ -1348,6 +1349,15 @@ function TeamDetailModal({
               </div>
             ) : null,
           )}
+          <a
+            className="team-modal-source gekisaka"
+            href={`https://www.google.com/search?q=${encodeURIComponent(`site:gekisaka.jp ${teamNameJa(team.id)} 代表`)}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            ゲキサカで{teamNameJa(team.id)}代表の記事を読む
+            <ExternalLink size={12} />
+          </a>
           <a className="team-modal-source" href={squadSource} target="_blank" rel="noreferrer">
             選手データ出典(Al Jazeera) / 写真・年齢・身長: Wikimedia Commons・Wikidata
             <ExternalLink size={12} />
