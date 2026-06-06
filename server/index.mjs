@@ -149,6 +149,20 @@ app.post('/api/sync', async (req, res) => {
   res.json(out)
 })
 
+// Preview text for a match WITHOUT pushing (testing).
+app.get('/api/preview-text', async (req, res) => {
+  const matchId = String(req.query.matchId || '')
+  if (!matchId) {
+    res.json({ ok: false, error: 'matchId required' })
+    return
+  }
+  const text = await buildMatchPreview(matchId).catch((err) => {
+    console.error('[preview-text]', err)
+    return null
+  })
+  res.json({ ok: Boolean(text), text })
+})
+
 // ESPN only. ?full=1 backfills the whole group stage (wider date scan).
 app.post('/api/sync-espn', async (req, res) => {
   if (!syncAuthorized(req)) {
@@ -699,13 +713,15 @@ async function syncFromEspn({ notify = true, full = false } = {}) {
   return { ok: true, scanned: eventIds.size, updated: changed.length, notified }
 }
 
-// ESPN first (scores + events), football-data as score-only fallback.
+// ESPN first (scores + events), football-data as score-only fallback, then
+// trapelko pre-match previews for matches kicking off soon.
 async function runAutoSync({ notify = true } = {}) {
   const espn = await syncFromEspn({ notify }).catch((err) => ({ ok: false, error: err?.message }))
   const footballData = footballDataToken
     ? await syncResultsFromFootballData({ notify, fallbackOnly: true }).catch((err) => ({ ok: false, error: err?.message }))
     : { skipped: true }
-  return { ok: true, espn, footballData }
+  const previews = notify ? await previewUpcomingMatches().catch((err) => ({ ok: false, error: err?.message })) : { skipped: true }
+  return { ok: true, espn, footballData, previews }
 }
 
 // Fetch FIFA World Cup results from football-data.org, map each finished group
@@ -897,6 +913,129 @@ async function buildResultBroadcast(savedRow) {
     ranking,
     publicAppUrl(),
   ].join('\n')
+}
+
+// トラペル子の試合前プレビュー: 保有国の試合キックオフ前に、国の強さ・主要選手・
+// 見どころ・保有者を紹介する。秘書トラペル子は参加者の一人として一言添える。
+const seedStrengthJa = { 1: 'グループ最有力', 2: '有力', 3: '伏兵', 4: 'チャレンジャー' }
+const confederationShortJa = { UEFA: '欧州', CONMEBOL: '南米', CAF: 'アフリカ', AFC: 'アジア', Concacaf: '北中米', OFC: 'オセアニア' }
+
+async function buildMatchPreview(fixtureId) {
+  const computed = await computeStandingsFromDb()
+  if (!computed) return null
+  const { data, selections, members } = computed
+  const [{ squads }, { playerInfoJa }] = await Promise.all([
+    import('../src/data/squads.ts'),
+    import('../src/data/playerInfoJa.ts'),
+  ])
+  const fixture = data.fixtures.find((f) => f.id === fixtureId)
+  if (!fixture) return null
+
+  const teamById = new Map(data.teams.map((t) => [t.id, t]))
+  const nameJa = (id) => data.teamNamesJa[id] || teamById.get(id)?.name || id
+  const ownerNames = (teamId) =>
+    selections
+      .filter((s) => s.teamId === teamId)
+      .map((s) => members.find((m) => m.id === s.memberId)?.name)
+      .filter(Boolean)
+  const keyPlayers = (teamId) => {
+    const order = { FW: 0, MF: 1, DF: 2, GK: 3 }
+    return (squads[teamId] || [])
+      .filter((p) => playerInfoJa[p.name]) // Wikidata-known = more notable
+      .sort((a, b) => (order[a.position] ?? 9) - (order[b.position] ?? 9))
+      .slice(0, 3)
+      .map((p) => playerInfoJa[p.name].ja || p.name)
+  }
+  const line = (teamId) => {
+    const team = teamById.get(teamId)
+    const owners = ownerNames(teamId)
+    const players = keyPlayers(teamId)
+    const conf = confederationShortJa[team.confederation] || team.confederation
+    return `${nameJa(teamId)}（${conf}・${seedStrengthJa[team.seed] || ''}）保有: ${owners.join('・') || 'なし'} / 注目: ${players.join('・') || '—'}`
+  }
+
+  const homeOwners = ownerNames(fixture.homeTeamId)
+  const awayOwners = ownerNames(fixture.awayTeamId)
+  const points = []
+  if (homeOwners.length && awayOwners.length) points.push('保有者対決')
+  const seedGap = Math.abs((teamById.get(fixture.homeTeamId)?.seed || 4) - (teamById.get(fixture.awayTeamId)?.seed || 4))
+  if (seedGap >= 2) points.push('格上対格下の一戦')
+  if (fixture.homeTeamId === 'japan' || fixture.awayTeamId === 'japan') points.push('日本は得点が2倍')
+
+  // 秘書トラペル子は参加者なので自分の国なら一言。
+  const trapelkoTeams = selections.filter((s) => s.memberId === 'm-trapelko').map((s) => s.teamId)
+  let trapelkoVoice = ''
+  if (trapelkoTeams.includes(fixture.homeTeamId) || trapelkoTeams.includes(fixture.awayTeamId)) {
+    const mine = trapelkoTeams.includes(fixture.homeTeamId) ? nameJa(fixture.homeTeamId) : nameJa(fixture.awayTeamId)
+    trapelkoVoice = `私（トラペル子）の${mine}、たのむよ〜！`
+  }
+
+  return [
+    '秘書トラペル子です。まもなくキックオフ！WC☆2026',
+    `[${fixture.group}組] ${nameJa(fixture.homeTeamId)} vs ${nameJa(fixture.awayTeamId)}`,
+    line(fixture.homeTeamId),
+    line(fixture.awayTeamId),
+    points.length ? `見どころ: ${points.join(' / ')}` : '見どころ: 勝てば勝点5、3点差なら+3！',
+    ...(trapelkoVoice ? [trapelkoVoice] : []),
+    publicAppUrl(),
+  ].join('\n')
+}
+
+// Scan ESPN for matches kicking off soon and preview each once (tracked in
+// Supabase notifications so restarts don't double-post).
+async function previewUpcomingMatches({ leadMinutes = 45 } = {}) {
+  if (!supabase) return { ok: false, error: 'supabase not configured' }
+  const target = lineNotificationTarget()
+  if (!target) return { ok: false, error: 'no notify target' }
+  const data = await import('../src/data/worldCup2026.ts')
+  const tlaToId = {}
+  for (const team of data.teams) tlaToId[team.shortName] = team.id
+
+  const now = Date.now()
+  const dates = [ymdUtc(now - 86400000), ymdUtc(now), ymdUtc(now + 86400000)]
+  const events = []
+  for (const d of dates) {
+    const sb = await espnGet(`/scoreboard?dates=${d}`)
+    for (const e of sb?.events || []) events.push(e)
+  }
+
+  let previewed = 0
+  for (const event of events) {
+    const comp = event.competitions?.[0]
+    const state = comp?.status?.type?.state || event.status?.type?.state
+    if (state !== 'pre') continue
+    const kickoff = Date.parse(event.date)
+    if (!Number.isFinite(kickoff)) continue
+    const minsToKickoff = (kickoff - now) / 60000
+    if (minsToKickoff <= 0 || minsToKickoff > leadMinutes) continue
+
+    const competitors = comp?.competitors || []
+    const homeId = tlaToId[competitors.find((c) => c.homeAway === 'home')?.team?.abbreviation]
+    const awayId = tlaToId[competitors.find((c) => c.homeAway === 'away')?.team?.abbreviation]
+    if (!homeId || !awayId) continue
+    const fixture = data.fixtures.find(
+      (f) =>
+        (f.homeTeamId === homeId && f.awayTeamId === awayId) || (f.homeTeamId === awayId && f.awayTeamId === homeId),
+    )
+    if (!fixture) continue
+
+    const { data: already } = await supabase
+      .from('notifications')
+      .select('id')
+      .eq('event_type', 'match_preview')
+      .eq('payload->>matchId', fixture.id)
+      .limit(1)
+    if (already && already.length > 0) continue
+
+    const text = await buildMatchPreview(fixture.id).catch(() => null)
+    if (!text) continue
+    await pushLine(target, [{ type: 'text', text }])
+    await supabase
+      .from('notifications')
+      .insert({ line_group_id: target, event_type: 'match_preview', payload: { matchId: fixture.id }, sent_at: new Date().toISOString() })
+    previewed += 1
+  }
+  return { ok: true, scanned: events.length, previewed }
 }
 
 function publicAppUrl() {
