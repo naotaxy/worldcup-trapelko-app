@@ -856,7 +856,10 @@ function App() {
                   </div>
                   <div className="team-pills">
                     {row.teams.slice(0, maxTeamsPerMember).map((team) => (
-                      <img key={team.team.id} src={flagUrl(team.team.flag)} alt={teamNameJa(team.team.id)} />
+                      <span key={team.team.id} className="team-pill">
+                        <img src={flagUrl(team.team.flag)} alt="" />
+                        {teamNameJa(team.team.id)}
+                      </span>
                     ))}
                   </div>
                 </div>
