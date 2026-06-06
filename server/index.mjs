@@ -105,6 +105,29 @@ app.post('/api/line/webhook', express.raw({ type: 'application/json' }), async (
   res.json({ ok: true })
 })
 
+// Preview the トラペル子 broadcast text for a match WITHOUT pushing to LINE.
+// e.g. GET /api/broadcast-preview?matchId=F-1&home=2&away=1
+app.get('/api/broadcast-preview', async (req, res) => {
+  const matchId = String(req.query.matchId || '')
+  if (!matchId) {
+    res.json({ ok: false, error: 'matchId required' })
+    return
+  }
+  const savedRow = {
+    match_id: matchId,
+    home_score: Number(req.query.home ?? 1),
+    away_score: Number(req.query.away ?? 0),
+    home_penalty_win: req.query.hpk === '1',
+    away_penalty_win: req.query.apk === '1',
+    event_payload: {},
+  }
+  const text = await buildResultBroadcast(savedRow).catch((err) => {
+    console.error('[broadcast-preview]', err)
+    return null
+  })
+  res.json({ ok: Boolean(text), text })
+})
+
 // Read captured group IDs (for one-time WC☆2026 groupId discovery).
 app.get('/api/line/captured-groups', (req, res) => {
   const key = process.env.LINE_CAPTURE_KEY
@@ -280,12 +303,10 @@ app.post('/api/results', async (req, res) => {
 
   const notifyTarget = lineNotificationTarget(result.notifyTo)
   if (notifyTarget) {
-    await pushLine(notifyTarget, [
-      {
-        type: 'text',
-        text: `秘書トラペル子です。WC☆2026の結果を更新しました。\n${result.matchId}: ${result.homeScore}-${result.awayScore}\n順位表と参加者ランキングも再計算済みです。\n${publicAppUrl()}`,
-      },
-    ])
+    const text =
+      (await buildResultBroadcast(row).catch(() => null)) ||
+      `秘書トラペル子です。WC☆2026の結果を更新しました。\n${result.matchId}: ${result.homeScore}-${result.awayScore}\n順位表と参加者ランキングも再計算済みです。\n${publicAppUrl()}`
+    await pushLine(notifyTarget, [{ type: 'text', text }])
   }
 
   res.json({ ok: true, result: row, notifiedTo: notifyTarget || null, wcGroupLocked: Boolean(wcGroupId) })
@@ -440,6 +461,96 @@ function lineNotificationTarget(requestedTarget) {
   if (wcGroupId) return wcGroupId
   if (requestedTarget && knownWcGroupIds.has(requestedTarget)) return requestedTarget
   return null
+}
+
+// Recompute live standings from Supabase using the same scoring logic as the
+// frontend (imported at runtime via Node type-stripping; Node 24 pinned).
+async function computeStandingsFromDb() {
+  if (!supabase) return null
+  const [logic, data] = await Promise.all([import('../src/logic/score.ts'), import('../src/data/worldCup2026.ts')])
+  const [rulesetRes, selectionsRes, resultsRes, membersRes] = await Promise.all([
+    supabase.from('rulesets').select('rules, awards').eq('id', 'default').maybeSingle(),
+    supabase.from('selections').select('team_id, members(member_key)'),
+    supabase.from('match_results').select('*'),
+    supabase.from('members').select('member_key, real_name'),
+  ])
+  const rules = rulesetRes.data?.rules || data.defaultRules
+  const awards =
+    rulesetRes.data?.awards && Object.keys(rulesetRes.data.awards).length
+      ? rulesetRes.data.awards
+      : { championTeamId: '', runnerUpTeamId: '', thirdPlaceTeamId: '', mvpTeamId: '', topScorerTeamId: '' }
+  const members = (membersRes.data || []).map((m) => ({
+    id: m.member_key,
+    name: m.real_name || m.member_key,
+    lineName: '',
+    avatar: '',
+    accent: '',
+  }))
+  const selections = (selectionsRes.data || [])
+    .filter((entry) => entry.members?.member_key)
+    .map((entry) => ({ memberId: entry.members.member_key, teamId: entry.team_id }))
+  const resultsMap = {}
+  for (const entry of resultsRes.data || []) {
+    resultsMap[entry.match_id] = {
+      home: entry.home_score,
+      away: entry.away_score,
+      homePenaltyWin: entry.home_penalty_win,
+      awayPenaltyWin: entry.away_penalty_win,
+      ...(entry.event_payload || {}),
+    }
+  }
+  const fixtures = data.fixtures.map((match) =>
+    resultsMap[match.id] ? { ...match, result: { ...match.result, ...resultsMap[match.id] } } : match,
+  )
+  const teamStandings = logic.calculateTeamStandings(data.groups, fixtures, rules, awards)
+  const memberStandings = logic.calculateMemberStandings(members, selections, teamStandings)
+  return { data, teamStandings, memberStandings, selections, members }
+}
+
+// Build the トラペル子 "live commentary" text: who won, the owners, and the
+// current member ranking with points.
+async function buildResultBroadcast(savedRow) {
+  const computed = await computeStandingsFromDb()
+  if (!computed) return null
+  const { data, memberStandings, selections, members } = computed
+  const fixture = data.fixtures.find((entry) => entry.id === savedRow.match_id)
+  if (!fixture) return null
+
+  const nameJa = (id) => data.teamNamesJa[id] || data.teams.find((team) => team.id === id)?.name || id
+  const owners = (teamId) =>
+    selections
+      .filter((selection) => selection.teamId === teamId)
+      .map((selection) => members.find((member) => member.id === selection.memberId)?.name)
+      .filter(Boolean)
+  const fmtOwners = (list) => (list.length ? list.join('・') : '保有者なし')
+
+  const hs = savedRow.home_score
+  const as = savedRow.away_score
+  const homeName = nameJa(fixture.homeTeamId)
+  const awayName = nameJa(fixture.awayTeamId)
+  const homePk = savedRow.home_penalty_win
+  const awayPk = savedRow.away_penalty_win
+
+  let resultLine
+  if (hs > as || homePk) {
+    resultLine = `勝ち: ${homeName}（保有: ${fmtOwners(owners(fixture.homeTeamId))}）${homePk ? ' ※PK勝ち' : ''}`
+  } else if (as > hs || awayPk) {
+    resultLine = `勝ち: ${awayName}（保有: ${fmtOwners(owners(fixture.awayTeamId))}）${awayPk ? ' ※PK勝ち' : ''}`
+  } else {
+    resultLine = `引き分け（${homeName}: ${fmtOwners(owners(fixture.homeTeamId))} / ${awayName}: ${fmtOwners(owners(fixture.awayTeamId))}）`
+  }
+
+  const ranking = memberStandings.map((row, index) => `${index + 1}位 ${row.member.name} ${row.total}pt`).join('\n')
+
+  return [
+    '秘書トラペル子です。WC☆2026 結果速報',
+    `[${fixture.group}組] ${homeName} ${hs}-${as} ${awayName}`,
+    resultLine,
+    '———',
+    '現在の参加者ランキング',
+    ranking,
+    publicAppUrl(),
+  ].join('\n')
 }
 
 function publicAppUrl() {
