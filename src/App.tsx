@@ -29,6 +29,7 @@ import {
   previewResults,
   teamNamesJa,
   teams,
+  worldCupHistory,
 } from './data/worldCup2026'
 import {
   calculateMemberStandings,
@@ -935,6 +936,7 @@ function App() {
                 players={squads[team.id] || []}
                 playerStats={playerStats}
                 fifaRank={fifaRanking[team.id]}
+                wcHistory={worldCupHistory[team.id]}
                 remaining={unplayed.length}
                 nextMatch={nextMatch}
                 onClose={() => setSelectedTeamId(null)}
@@ -1219,6 +1221,7 @@ function TeamDetailModal({
   players,
   playerStats,
   fifaRank,
+  wcHistory,
   remaining,
   nextMatch,
   onClose,
@@ -1229,6 +1232,7 @@ function TeamDetailModal({
   players: SquadPlayer[]
   playerStats: Record<string, PlayerStat>
   fifaRank?: number
+  wcHistory?: string
   remaining: number
   nextMatch: {
     date: string
@@ -1274,6 +1278,8 @@ function TeamDetailModal({
           <strong>{breakdown.total}</strong>
           <em>保有: {owners}</em>
         </div>
+
+        {wcHistory ? <div className="team-modal-history">過去W杯: {wcHistory}</div> : null}
 
         {standing ? (
           <div className="team-modal-standing">
@@ -1462,7 +1468,9 @@ function PlayerChip({ player, teamId, stat }: { player: SquadPlayer; teamId: str
   const info = playerInfoJa[player.name]
   const name = playerName(player, teamId)
   const age = info?.dob ? playerAge(info.dob) : null
-  const bio = [age != null ? `${age}歳` : null, info?.heightCm ? `${info.heightCm}cm` : null].filter(Boolean).join(' / ')
+  const bio = [age != null ? `${age}歳` : null, info?.heightCm ? `${info.heightCm}cm` : null, info?.club || null]
+    .filter(Boolean)
+    .join(' / ')
   const statParts: string[] = []
   if (stat?.goals) statParts.push(`得点${stat.goals}`)
   if (stat?.own) statParts.push(`OG${stat.own}`)

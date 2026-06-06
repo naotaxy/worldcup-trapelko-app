@@ -1477,6 +1477,16 @@ input {
   color: #d8d2bb;
 }
 
+.team-modal-history {
+  margin-bottom: 10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #d8d2bb;
+  background: rgba(245, 241, 223, 0.06);
+  border: 1px solid rgba(245, 241, 223, 0.12);
+}
+
 .team-modal-standing,
 .team-modal-tallies {
   display: flex;
