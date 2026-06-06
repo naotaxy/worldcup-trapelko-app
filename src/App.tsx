@@ -3,9 +3,7 @@ import type { CSSProperties, MutableRefObject, ReactNode } from 'react'
 import {
   BadgeCheck,
   Bell,
-  Bot,
   ExternalLink,
-  Flag,
   Gauge,
   Link2,
   LockKeyhole,
@@ -13,7 +11,6 @@ import {
   RotateCcw,
   Save,
   Settings,
-  Shield,
   Shuffle,
   Trophy,
   Users,
@@ -45,7 +42,7 @@ import {
   type TeamBreakdown,
 } from './logic/score'
 import { calculateFinalProjections, type MemberProjection, type ProjectionMode } from './logic/projection'
-import type { AwardSettings, GroupCode, Match, MatchResult, Rules, SquadPlayer, Team, TeamSelection, TeamStanding } from './types'
+import type { AwardSettings, GroupCode, Match, MatchResult, Rules, SquadPlayer, Team, TeamSelection } from './types'
 import { fetchBootstrap, fetchSharedState, linkLineMember, pushResult, pushRules, type Bootstrap } from './lib/api'
 import { getLineProfile, type LineProfile } from './lib/liff'
 import { loadLocalState, saveLocalState } from './lib/persistence'
@@ -71,7 +68,6 @@ const ruleFields: Array<{ key: keyof Rules; label: string; min: number; max: num
 
 const maxTeamsPerMember = 8
 const maxOwnersPerTeam = 2
-const draftSlotLimit = demoMembers.length * maxTeamsPerMember
 
 const positionLabels: Record<SquadPlayer['position'], string> = {
   GK: 'GK',
@@ -195,7 +191,6 @@ function App() {
     () => calculateFinalProjections(demoMembers, draftSelections, groups, liveFixtures, rules, awards, projectionMode),
     [awards, draftSelections, liveFixtures, projectionMode, rules],
   )
-  const projectionLeader = memberProjections[0]
   const activeRows = useMemo(() => groupStandings(teamStandings, activeGroup), [teamStandings, activeGroup])
   const activeMatches = useMemo(() => liveFixtures.filter((match) => match.group === activeGroup), [liveFixtures, activeGroup])
   const selectedMatch = useMemo<Match>(
@@ -428,61 +423,7 @@ function App() {
     <main className="app-shell">
       <TournamentScene activeGroup={activeGroup} />
 
-      <header className="topbar">
-        <div className="brand-lockup">
-          <div className="brand-mark">26</div>
-          <div>
-            <p className="eyebrow">LINEグループ用カップボード</p>
-            <h1>W杯ドラフト</h1>
-          </div>
-        </div>
-        <div className="top-actions">
-          {lineProfile ? (
-            <span className="line-profile-chip" title={`${lineProfile.displayName}でログイン中`}>
-              {lineProfile.pictureUrl ? <img src={lineProfile.pictureUrl} alt={lineProfile.displayName} /> : <Users size={14} />}
-              {lineProfile.displayName}
-            </span>
-          ) : (
-            <button
-              type="button"
-              className="icon-button"
-              title={bootstrap?.liffId ? 'LINEでログイン' : 'LINEログインは公開後に有効'}
-              onClick={handleLineLogin}
-            >
-              <LockKeyhole size={18} />
-            </button>
-          )}
-          <button type="button" className="icon-button" title="トラペル子通知">
-            <Bot size={18} />
-          </button>
-        </div>
-      </header>
-
-      <section className="score-strip" aria-label="overview">
-        <Metric icon={<Flag size={18} />} label="組数" value="12組 x 4" />
-        <Metric icon={<Users size={18} />} label="参加者" value={`${demoMembers.length}人`} />
-        <Metric icon={<Gauge size={18} />} label="決定済み" value={`${draftSelections.length}/${draftSlotLimit}`} />
-        <Metric icon={<Shield size={18} />} label="予想首位" value={projectionLeader ? `${projectionLeader.member.name} ${projectionLeader.average}` : '計算中'} />
-      </section>
-
-      <nav className="group-tabs" aria-label="groups">
-        {groups.map((group) => (
-          <button
-            key={group.code}
-            type="button"
-            className={group.code === activeGroup ? 'active' : ''}
-            style={{ '--group-color': group.color } as CSSProperties}
-            onClick={() => {
-              setActiveGroup(group.code)
-              setSelectedMatchId(`${group.code}-1`)
-            }}
-          >
-            {group.code}
-          </button>
-        ))}
-      </nav>
-
-      <nav className="mobile-section-tabs" aria-label="mobile sections">
+      <nav className="mobile-section-tabs" aria-label="sections">
         <a href="#match-desk">
           <Bell size={15} />
           試合
@@ -511,27 +452,23 @@ function App() {
           <Settings size={15} />
           ルール
         </a>
+        {lineProfile ? (
+          <span className="line-profile-chip" title={`${lineProfile.displayName}でログイン中`}>
+            {lineProfile.pictureUrl ? <img src={lineProfile.pictureUrl} alt={lineProfile.displayName} /> : <Users size={14} />}
+            {lineProfile.displayName}
+          </span>
+        ) : (
+          <button
+            type="button"
+            className="tab-login"
+            title={bootstrap?.liffId ? 'LINEでログイン' : 'LINEログインは公開後に有効'}
+            onClick={handleLineLogin}
+          >
+            <LockKeyhole size={15} />
+            ログイン
+          </button>
+        )}
       </nav>
-
-      <section className="hero-band">
-        <div>
-          <p className="eyebrow">Group {activeGroup}</p>
-          <h2>{activeGroupMeta.headline}</h2>
-        </div>
-        <div className="hero-flags">
-          {activeGroupMeta.teams.map((team) => (
-            <img key={team.id} src={flagUrl(team.flag)} alt={`${teamNameJa(team.id)}の国旗`} />
-          ))}
-        </div>
-      </section>
-
-      <section className="line-bridge-band" aria-label="LINE group policy">
-        <div>
-          <Bot size={18} />
-          <strong>WC☆2026 専用</strong>
-        </div>
-        <p>秘書トラペル子はこのLINEグループではW杯の結果、順位、集計だけを担当します。ウイコレ関連の発言と機能は無効です。</p>
-      </section>
 
       <section className="dashboard-grid">
         <details className="panel slot-panel rescue-slot-panel" id="draft-slot">
@@ -765,40 +702,50 @@ function App() {
         </details>
 
         <section className="panel group-panel" id="group-standings">
-          <PanelTitle icon={<Trophy size={18} />} title={`グループ${activeGroup}`} note="順位表" />
-          <div className="table-shell">
-            <table className="standings-table">
-              <thead>
-                <tr>
-                  <th>代表</th>
-                  <th>持ち主</th>
-                  <th>試</th>
-                  <th>W</th>
-                  <th>D</th>
-                  <th>L</th>
-                  <th>GD</th>
-                  <th>勝点</th>
-                  <th>遊びPt</th>
-                </tr>
-              </thead>
-              <tbody>
-                {activeRows.map((row) => (
-                  <tr key={row.team.id}>
-                    <td>
-                      <TeamCell row={row} />
-                    </td>
-                    <td>{teamOwnersByTeam.get(row.team.id) || '未決定'}</td>
-                    <td>{row.played}</td>
-                    <td>{row.wins}</td>
-                    <td>{row.draws}</td>
-                    <td>{row.losses}</td>
-                    <td>{formatSigned(row.goalDifference)}</td>
-                    <td>{row.fifaPoints}</td>
-                    <td>{row.fantasyPoints}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <PanelTitle icon={<Trophy size={18} />} title={`グループ${activeGroup} 順位`} note="国をタップで詳細" />
+          <nav className="group-tabs" aria-label="groups">
+            {groups.map((group) => (
+              <button
+                key={group.code}
+                type="button"
+                className={group.code === activeGroup ? 'active' : ''}
+                style={{ '--group-color': group.color } as CSSProperties}
+                onClick={() => {
+                  setActiveGroup(group.code)
+                  setSelectedMatchId(`${group.code}-1`)
+                }}
+              >
+                {group.code}
+              </button>
+            ))}
+          </nav>
+          <div className="standings-list">
+            {activeRows.map((row, index) => (
+              <button
+                type="button"
+                key={row.team.id}
+                className="standings-row"
+                onClick={() => setSelectedTeamId(row.team.id)}
+                title={`${teamNameJa(row.team.id)}の詳細`}
+              >
+                <span className="standings-rank">{index + 1}</span>
+                <img src={flagUrl(row.team.flag)} alt="" />
+                <div className="standings-main">
+                  <strong>{teamNameJa(row.team.id)}</strong>
+                  <span>{teamOwnersByTeam.get(row.team.id) || '持ち主未定'}</span>
+                </div>
+                <div className="standings-stats">
+                  <span>
+                    {row.wins}勝{row.draws}分{row.losses}敗
+                  </span>
+                  <span>得失{formatSigned(row.goalDifference)}</span>
+                </div>
+                <strong className="standings-pt">
+                  {row.fantasyPoints}
+                  <em>pt</em>
+                </strong>
+              </button>
+            ))}
           </div>
         </section>
 
@@ -1072,16 +1019,6 @@ function App() {
   )
 }
 
-function Metric({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
-  return (
-    <div className="metric">
-      {icon}
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  )
-}
-
 function PanelTitle({ icon, title, note }: { icon: ReactNode; title: string; note: string }) {
   return (
     <div className="panel-title">
@@ -1090,18 +1027,6 @@ function PanelTitle({ icon, title, note }: { icon: ReactNode; title: string; not
         <h3>{title}</h3>
       </div>
       <span>{note}</span>
-    </div>
-  )
-}
-
-function TeamCell({ row }: { row: TeamStanding }) {
-  return (
-    <div className="team-cell">
-      <img src={flagUrl(row.team.flag)} alt={`${teamNameJa(row.team.id)}の国旗`} />
-      <div>
-        <strong>{teamNameJa(row.team.id)}</strong>
-        <span>{row.team.confederation}</span>
-      </div>
     </div>
   )
 }

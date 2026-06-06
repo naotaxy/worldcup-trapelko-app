@@ -108,7 +108,12 @@ async function sparqlChunk(chunk) {
         if (row.image && !entry.photo) {
           entry.photo = `${row.image.value.replace(/^http:/, 'https:')}?width=240`
         }
-        if (row.height && entry.heightCm == null) entry.heightCm = Math.round(Number(row.height.value))
+        if (row.height && entry.heightCm == null) {
+          let h = Number(row.height.value)
+          if (h > 0 && h < 3) h = h * 100 // some entities store height in meters (1.69)
+          h = Math.round(h)
+          if (h >= 140 && h <= 220) entry.heightCm = h // drop implausible values -> blank
+        }
         if (row.dob && !entry.dob) entry.dob = row.dob.value.slice(0, 10)
         info[id] = entry
       }

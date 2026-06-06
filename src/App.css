@@ -34,7 +34,37 @@
 }
 
 .mobile-section-tabs {
-  display: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  width: min(1480px, 100%);
+  margin: 10px auto 6px;
+}
+
+.mobile-section-tabs a,
+.mobile-section-tabs .tab-login,
+.mobile-section-tabs .line-profile-chip {
+  display: inline-flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 40px;
+  padding: 0 10px;
+  border: 1px solid rgba(245, 241, 223, 0.16);
+  border-radius: 8px;
+  background: rgba(245, 241, 223, 0.07);
+  color: #e8e1c9;
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.mobile-section-tabs a:hover,
+.mobile-section-tabs .tab-login:hover {
+  border-color: rgba(216, 199, 131, 0.78);
 }
 
 .topbar {
@@ -200,15 +230,16 @@ input {
 }
 
 .group-tabs {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(40px, 1fr));
-  width: min(1480px, 100%);
-  margin: 0 auto 12px;
+  display: flex;
+  flex-wrap: wrap;
+  margin: 0 0 12px;
   gap: 6px;
 }
 
 .group-tabs button {
-  height: 42px;
+  flex: 1 1 40px;
+  min-width: 38px;
+  height: 40px;
   border: 1px solid rgba(245, 241, 223, 0.16);
   border-radius: 8px;
   background: rgba(11, 16, 10, 0.72);
@@ -221,6 +252,90 @@ input {
   border-color: var(--group-color);
   background: color-mix(in srgb, var(--group-color) 28%, rgba(11, 16, 10, 0.82));
   color: #fffaf0;
+}
+
+.standings-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.standings-row {
+  display: grid;
+  grid-template-columns: 20px 26px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: 1px solid rgba(245, 241, 223, 0.12);
+  border-radius: 10px;
+  background: rgba(245, 241, 223, 0.05);
+  color: #e8e1c9;
+  cursor: pointer;
+}
+
+.standings-row:hover {
+  border-color: rgba(216, 199, 131, 0.6);
+}
+
+.standings-rank {
+  font-weight: 800;
+  font-size: 13px;
+  color: #c9c08a;
+  text-align: center;
+}
+
+.standings-row > img {
+  width: 26px;
+  height: 18px;
+  border-radius: 3px;
+  object-fit: cover;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
+}
+
+.standings-main {
+  min-width: 0;
+}
+
+.standings-main strong {
+  display: block;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.standings-main span {
+  display: block;
+  font-size: 11px;
+  color: #b9b49c;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.standings-stats {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-size: 10px;
+  line-height: 1.35;
+  color: #b9b49c;
+  white-space: nowrap;
+}
+
+.standings-pt {
+  font-size: 16px;
+  color: #f0d98a;
+  white-space: nowrap;
+}
+
+.standings-pt em {
+  margin-left: 1px;
+  font-style: normal;
+  font-size: 10px;
+  color: #b9b49c;
 }
 
 .hero-band {
@@ -314,11 +429,11 @@ input {
 }
 
 .match-panel {
-  order: 1;
+  order: 2;
 }
 
 .group-panel {
-  order: 2;
+  order: 1;
 }
 
 .leaderboard-panel {
@@ -1817,55 +1932,38 @@ input {
   }
 
   .group-tabs {
-    position: sticky;
-    top: 0;
-    z-index: 7;
     display: flex;
-    width: calc(100% + 20px);
-    margin: 0 -10px 8px;
+    flex-wrap: wrap;
+    margin: 0 0 8px;
     gap: 6px;
-    overflow-x: auto;
-    padding: 8px 10px;
-    background: rgba(8, 14, 8, 0.9);
-    backdrop-filter: blur(18px);
-    scroll-snap-type: x proximity;
-    scrollbar-width: none;
-  }
-
-  .group-tabs::-webkit-scrollbar {
-    display: none;
   }
 
   .group-tabs button {
-    flex: 0 0 46px;
-    height: 40px;
-    scroll-snap-align: start;
+    flex: 1 1 40px;
+    min-width: 36px;
+    height: 38px;
   }
 
   .mobile-section-tabs {
     position: sticky;
-    top: 56px;
+    top: 0;
     z-index: 6;
     display: flex;
+    flex-wrap: wrap;
     width: calc(100% + 20px);
     margin: 0 -10px 8px;
     gap: 6px;
-    overflow-x: auto;
-    padding: 7px 10px 9px;
-    background: rgba(8, 14, 8, 0.88);
+    padding: 8px 10px;
+    background: rgba(8, 14, 8, 0.92);
     backdrop-filter: blur(18px);
-    scroll-snap-type: x proximity;
-    scrollbar-width: none;
   }
 
-  .mobile-section-tabs::-webkit-scrollbar {
-    display: none;
-  }
-
-  .mobile-section-tabs a {
+  .mobile-section-tabs a,
+  .mobile-section-tabs .tab-login,
+  .mobile-section-tabs .line-profile-chip {
     display: flex;
-    flex: 0 0 68px;
-    min-height: 36px;
+    flex: 1 1 22%;
+    min-height: 38px;
     align-items: center;
     justify-content: center;
     gap: 4px;
