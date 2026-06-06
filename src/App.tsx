@@ -22,6 +22,7 @@ import './App.css'
 import { CountrySlot, type SlotCountry } from './components/CountrySlot'
 import { TournamentScene } from './components/TournamentScene'
 import { squads, squadSource, squadWarnings } from './data/squads'
+import { playerNamesJa } from './data/playerNamesJa'
 import {
   contentLeads,
   defaultRules,
@@ -1305,8 +1306,10 @@ function clearSlotTimer(timerRef: MutableRefObject<number | null>) {
 }
 
 function playerName(player: SquadPlayer, teamId: string): string {
-  if (teamId === 'japan') return japanPlayerNamesJa[player.name] || player.name
-  return player.name
+  // Japan uses the hand-curated map first (exact kanji), everyone else uses the
+  // Wikidata-sourced katakana; fall back to the original name when unknown.
+  if (teamId === 'japan') return japanPlayerNamesJa[player.name] || playerNamesJa[player.name] || player.name
+  return playerNamesJa[player.name] || player.name
 }
 
 function isMatchWinner(match: Match, side: 'home' | 'away'): boolean {
