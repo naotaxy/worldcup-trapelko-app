@@ -134,10 +134,37 @@ app.get('/api/broadcast-preview', async (req, res) => {
   res.json({ ok: Boolean(text), text })
 })
 
-// Pull live results from football-data.org. notify=0 backfills silently.
-app.post('/api/sync-results', async (req, res) => {
+function syncAuthorized(req) {
   const key = process.env.SYNC_KEY
-  if (key && req.query.key !== key) {
+  return !key || req.query.key === key
+}
+
+// Combined live sync: ESPN (scores + events) + football-data fallback.
+app.post('/api/sync', async (req, res) => {
+  if (!syncAuthorized(req)) {
+    res.status(403).json({ ok: false, error: 'forbidden' })
+    return
+  }
+  const out = await runAutoSync({ notify: req.query.notify !== '0' }).catch((err) => ({ ok: false, error: err?.message }))
+  res.json(out)
+})
+
+// ESPN only. ?full=1 backfills the whole group stage (wider date scan).
+app.post('/api/sync-espn', async (req, res) => {
+  if (!syncAuthorized(req)) {
+    res.status(403).json({ ok: false, error: 'forbidden' })
+    return
+  }
+  const out = await syncFromEspn({ notify: req.query.notify !== '0', full: req.query.full === '1' }).catch((err) => ({
+    ok: false,
+    error: err?.message,
+  }))
+  res.json(out)
+})
+
+// Pull live results from football-data.org only. notify=0 backfills silently.
+app.post('/api/sync-results', async (req, res) => {
+  if (!syncAuthorized(req)) {
     res.status(403).json({ ok: false, error: 'forbidden' })
     return
   }
@@ -347,12 +374,13 @@ app.listen(port, () => {
 })
 
 // Auto-pull results while the instance is awake (keep it warm with UptimeRobot).
-if (footballDataToken && supabase) {
-  console.log(`[worldcup-trapelko] football-data auto-sync every ${Math.round(syncIntervalMs / 1000)}s`)
+// ESPN (scores + events) needs no key, so this runs whenever Supabase is set.
+if (supabase) {
+  console.log(`[worldcup-trapelko] auto-sync (ESPN + football-data fallback) every ${Math.round(syncIntervalMs / 1000)}s`)
   setInterval(() => {
-    syncResultsFromFootballData({ notify: true })
+    runAutoSync({ notify: true })
       .then((out) => {
-        if (out?.updated) console.log('[sync]', JSON.stringify(out))
+        if (out?.espn?.updated || out?.footballData?.updated) console.log('[sync]', JSON.stringify(out))
       })
       .catch((err) => console.error('[sync]', err))
   }, syncIntervalMs)
@@ -493,10 +521,197 @@ function lineNotificationTarget(requestedTarget) {
   return null
 }
 
+// --- ESPN free hidden API: scores + match events (goals, cards, own goals) ---
+// Unofficial/undocumented but free, no key, and includes the 2026 schedule.
+// Used as the primary live source; football-data is the score-only fallback.
+const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world'
+const EVENT_KEYS = [
+  'homeHatTricks',
+  'awayHatTricks',
+  'homeYellowCards',
+  'awayYellowCards',
+  'homeRedCards',
+  'awayRedCards',
+  'homeOwnGoals',
+  'awayOwnGoals',
+]
+
+async function espnGet(pathname) {
+  try {
+    const res = await fetch(`${ESPN_BASE}${pathname}`, { headers: { 'user-agent': 'wc2026-trapelko/1.0' } })
+    if (!res.ok) return null
+    return await res.json()
+  } catch {
+    return null
+  }
+}
+
+function ymdUtc(ts) {
+  const d = new Date(ts)
+  return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}${String(d.getUTCDate()).padStart(2, '0')}`
+}
+
+function eventsEqual(a = {}, b = {}) {
+  return EVENT_KEYS.every((k) => (a?.[k] || 0) === (b?.[k] || 0))
+}
+
+// Turn one ESPN match summary into { fixtureId, hs, as, eventPayload } oriented
+// to our fixture, or null if not finished / not one of our group fixtures.
+function parseEspnSummary(summary, data, teamById) {
+  const comp = summary?.header?.competitions?.[0]
+  if (!comp || !comp.status?.type?.completed) return null
+  const competitors = comp.competitors || []
+  const home = competitors.find((c) => c.homeAway === 'home')
+  const away = competitors.find((c) => c.homeAway === 'away')
+  if (!home?.team || !away?.team) return null
+  const abbrA = home.team.abbreviation
+  const abbrB = away.team.abbreviation
+  const ourA = data.teams.find((t) => t.shortName === abbrA)
+  const ourB = data.teams.find((t) => t.shortName === abbrB)
+  if (!ourA || !ourB) return null
+  const fixture = data.fixtures.find(
+    (f) =>
+      (f.homeTeamId === ourA.id && f.awayTeamId === ourB.id) || (f.homeTeamId === ourB.id && f.awayTeamId === ourA.id),
+  )
+  if (!fixture) return null
+
+  const idToAbbr = {}
+  for (const c of competitors) idToAbbr[c.team.id] = c.team.abbreviation
+  const scoreByAbbr = { [abbrA]: Number(home.score), [abbrB]: Number(away.score) }
+  const tally = { [abbrA]: { goals: {}, yellow: 0, red: 0, own: 0 }, [abbrB]: { goals: {}, yellow: 0, red: 0, own: 0 } }
+
+  for (const ev of summary.keyEvents || []) {
+    const text = ev?.type?.text || ''
+    const teamAbbr = idToAbbr[ev?.team?.id]
+    if (/own goal/i.test(text)) {
+      // ESPN credits the goal to the beneficiary team; the own goal counts
+      // against the other team. Best-effort (own goals are rare).
+      const conceding = teamAbbr === abbrA ? abbrB : abbrA
+      if (tally[conceding]) tally[conceding].own += 1
+      continue
+    }
+    if (/goal/i.test(text) || /penalty - scored/i.test(text)) {
+      if (!tally[teamAbbr]) continue
+      const scorer = ev?.participants?.[0]?.athlete?.id || `anon-${Math.random()}`
+      tally[teamAbbr].goals[scorer] = (tally[teamAbbr].goals[scorer] || 0) + 1
+      continue
+    }
+    if (/red card/i.test(text)) {
+      if (tally[teamAbbr]) tally[teamAbbr].red += 1
+      continue
+    }
+    if (/yellow card/i.test(text)) {
+      if (tally[teamAbbr]) tally[teamAbbr].yellow += 1
+    }
+  }
+
+  const hatTricks = (abbr) => Object.values(tally[abbr].goals).filter((n) => n >= 3).length
+  const hAbbr = teamById.get(fixture.homeTeamId).shortName
+  const aAbbr = teamById.get(fixture.awayTeamId).shortName
+  const hs = scoreByAbbr[hAbbr]
+  const as = scoreByAbbr[aAbbr]
+  if (!Number.isFinite(hs) || !Number.isFinite(as)) return null
+
+  return {
+    fixtureId: fixture.id,
+    hs,
+    as,
+    eventPayload: {
+      homeHatTricks: hatTricks(hAbbr),
+      awayHatTricks: hatTricks(aAbbr),
+      homeYellowCards: tally[hAbbr].yellow,
+      awayYellowCards: tally[aAbbr].yellow,
+      homeRedCards: tally[hAbbr].red,
+      awayRedCards: tally[aAbbr].red,
+      homeOwnGoals: tally[hAbbr].own,
+      awayOwnGoals: tally[aAbbr].own,
+    },
+  }
+}
+
+async function syncFromEspn({ notify = true, full = false } = {}) {
+  if (!supabase) return { ok: false, error: 'supabase not configured' }
+  const data = await import('../src/data/worldCup2026.ts')
+  const teamById = new Map(data.teams.map((t) => [t.id, t]))
+
+  let dates
+  if (full) {
+    dates = []
+    for (let day = 11; day <= 27; day += 1) dates.push(`202606${String(day).padStart(2, '0')}`)
+  } else {
+    const now = Date.now()
+    dates = [ymdUtc(now), ymdUtc(now - 86400000)]
+  }
+
+  const eventIds = new Set()
+  for (const d of dates) {
+    const sb = await espnGet(`/scoreboard?dates=${d}`)
+    for (const e of sb?.events || []) eventIds.add(e.id)
+  }
+
+  const { data: existingRows } = await supabase.from('match_results').select('*')
+  const existing = new Map((existingRows || []).map((r) => [r.match_id, r]))
+
+  const changed = []
+  for (const id of eventIds) {
+    const summary = await espnGet(`/summary?event=${id}`)
+    const parsed = parseEspnSummary(summary, data, teamById)
+    if (!parsed) continue
+    const prev = existing.get(parsed.fixtureId)
+    if (prev && prev.home_score === parsed.hs && prev.away_score === parsed.as && eventsEqual(prev.event_payload, parsed.eventPayload)) {
+      continue
+    }
+    const row = {
+      match_id: parsed.fixtureId,
+      home_score: parsed.hs,
+      away_score: parsed.as,
+      home_penalty_win: false,
+      away_penalty_win: false,
+      event_payload: parsed.eventPayload,
+      source: 'espn',
+      updated_at: new Date().toISOString(),
+    }
+    const { error } = await supabase.from('match_results').upsert(row, { onConflict: 'match_id' })
+    if (!error) changed.push(row)
+  }
+
+  let notified = 0
+  if (notify && changed.length > 0) {
+    const target = lineNotificationTarget()
+    if (target) {
+      if (changed.length <= 5) {
+        for (const row of changed) {
+          const text = await buildResultBroadcast(row).catch(() => null)
+          if (text) {
+            await pushLine(target, [{ type: 'text', text }])
+            notified += 1
+          }
+        }
+      } else {
+        const text = await buildRankingBroadcast(`秘書トラペル子です。WC☆2026 結果まとめ更新（${changed.length}試合）`).catch(() => null)
+        if (text) {
+          await pushLine(target, [{ type: 'text', text }])
+          notified = 1
+        }
+      }
+    }
+  }
+  return { ok: true, scanned: eventIds.size, updated: changed.length, notified }
+}
+
+// ESPN first (scores + events), football-data as score-only fallback.
+async function runAutoSync({ notify = true } = {}) {
+  const espn = await syncFromEspn({ notify }).catch((err) => ({ ok: false, error: err?.message }))
+  const footballData = footballDataToken
+    ? await syncResultsFromFootballData({ notify, fallbackOnly: true }).catch((err) => ({ ok: false, error: err?.message }))
+    : { skipped: true }
+  return { ok: true, espn, footballData }
+}
+
 // Fetch FIFA World Cup results from football-data.org, map each finished group
 // match to our fixture (by group + unordered team pair), upsert to Supabase, and
 // have トラペル子 broadcast newly-changed results.
-async function syncResultsFromFootballData({ notify = true } = {}) {
+async function syncResultsFromFootballData({ notify = true, fallbackOnly = false } = {}) {
   if (!footballDataToken) return { ok: false, error: 'FOOTBALL_DATA_TOKEN not set' }
   if (!supabase) return { ok: false, error: 'supabase not configured' }
 
@@ -534,6 +749,8 @@ async function syncResultsFromFootballData({ notify = true } = {}) {
     const orientedHome = fixture.homeTeamId === homeId ? fullTime.home : fullTime.away
     const orientedAway = fixture.homeTeamId === homeId ? fullTime.away : fullTime.home
     const prev = existing.get(fixture.id)
+    // Fallback mode: never overwrite a row ESPN already produced.
+    if (fallbackOnly && prev) continue
     if (prev && prev.home_score === orientedHome && prev.away_score === orientedAway) continue
 
     const row = {
@@ -659,12 +876,22 @@ async function buildResultBroadcast(savedRow) {
     resultLine = `引き分け（${homeName}: ${fmtOwners(owners(fixture.homeTeamId))} / ${awayName}: ${fmtOwners(owners(fixture.awayTeamId))}）`
   }
 
+  const ep = savedRow.event_payload || {}
+  const topics = []
+  if (ep.homeHatTricks) topics.push(`${homeName}ハットトリック`)
+  if (ep.awayHatTricks) topics.push(`${awayName}ハットトリック`)
+  if (ep.homeRedCards) topics.push(`${homeName}退場${ep.homeRedCards}`)
+  if (ep.awayRedCards) topics.push(`${awayName}退場${ep.awayRedCards}`)
+  if (ep.homeOwnGoals) topics.push(`${homeName}OG`)
+  if (ep.awayOwnGoals) topics.push(`${awayName}OG`)
+
   const ranking = memberStandings.map((row, index) => `${index + 1}位 ${row.member.name} ${row.total}pt`).join('\n')
 
   return [
     '秘書トラペル子です。WC☆2026 結果速報',
     `[${fixture.group}組] ${homeName} ${hs}-${as} ${awayName}`,
     resultLine,
+    ...(topics.length ? [`トピック: ${topics.join(' / ')}`] : []),
     '———',
     '現在の参加者ランキング',
     ranking,
