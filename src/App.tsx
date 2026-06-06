@@ -7,6 +7,7 @@ import {
   Gauge,
   Link2,
   Medal,
+  Network,
   RotateCcw,
   Save,
   Settings,
@@ -42,6 +43,7 @@ import {
 import { calculateFinalProjections, type MemberProjection, type ProjectionMode } from './logic/projection'
 import type { AwardSettings, GroupCode, Match, MatchResult, Rules, SquadPlayer, Team, TeamSelection } from './types'
 import { fetchSharedState, pushResult, pushRules, type PlayerStat } from './lib/api'
+import { fetchBracket, type BracketMatch, type BracketRound, type BracketTeam } from './lib/bracket'
 import { loadLocalState, saveLocalState } from './lib/persistence'
 
 const ruleFields: Array<{ key: keyof Rules; label: string; min: number; max: number; step: number }> = [
@@ -410,6 +412,10 @@ function App() {
         <a href="#match-desk">
           <Bell size={15} />
           試合
+        </a>
+        <a href="#bracket">
+          <Network size={15} />
+          組合せ
         </a>
         <a href="#group-standings">
           <Trophy size={15} />
@@ -845,6 +851,8 @@ function App() {
           </div>
         </section>
 
+        <KnockoutBracket />
+
         <section className="panel rules-panel" id="rules-lab">
           <PanelTitle icon={<Settings size={18} />} title="ルール編集" note={saveLabel} />
           <div className="rule-grid">
@@ -927,6 +935,64 @@ function App() {
           })()
         : null}
     </main>
+  )
+}
+
+function KnockoutBracket() {
+  const [rounds, setRounds] = useState<BracketRound[] | null>(null)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    fetchBracket().then((result) => {
+      if (cancelled) return
+      setRounds(result)
+      setLoaded(true)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  return (
+    <section className="panel bracket-panel" id="bracket">
+      <PanelTitle icon={<Network size={18} />} title="決勝トーナメント 組合せ" note="ESPN自動取得" />
+      {!loaded ? (
+        <p className="bracket-note">読み込み中…</p>
+      ) : !rounds ? (
+        <p className="bracket-note">組合せは予選終了後（決勝トーナメント確定後）に自動表示されます。</p>
+      ) : (
+        <div className="bracket-scroll">
+          {rounds.map((round) => (
+            <div key={round.slug} className="bracket-round">
+              <h4>{round.label}</h4>
+              {round.matches.map((match) => (
+                <BracketCard key={match.id} match={match} />
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  )
+}
+
+function BracketCard({ match }: { match: BracketMatch }) {
+  return (
+    <div className={match.status === 'post' ? 'bracket-card done' : 'bracket-card'}>
+      <BracketTeamRow team={match.home} />
+      <BracketTeamRow team={match.away} />
+    </div>
+  )
+}
+
+function BracketTeamRow({ team }: { team: BracketTeam }) {
+  return (
+    <div className={team.winner ? 'bracket-team winner' : 'bracket-team'}>
+      {team.flag ? <img src={team.flag} alt="" /> : <span className="bracket-tbd" />}
+      <span className="bracket-team-name">{team.name}</span>
+      <strong>{team.score ?? ''}</strong>
+    </div>
   )
 }
 
