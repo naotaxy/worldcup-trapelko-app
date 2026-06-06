@@ -2,7 +2,7 @@ services:
   - type: web
     name: worldcup-trapelko
     runtime: node
-    plan: starter
+    plan: free
     buildCommand: npm ci && npm run build
     startCommand: npm start
     autoDeploy: true

@@ -395,5 +395,7 @@ function lineNotificationTarget(requestedTarget) {
 }
 
 function publicAppUrl() {
-  return process.env.PUBLIC_APP_URL || 'https://example.onrender.com'
+  // RENDER_EXTERNAL_URL is injected automatically by Render, so the app works
+  // even before PUBLIC_APP_URL is set manually.
+  return process.env.PUBLIC_APP_URL || process.env.RENDER_EXTERNAL_URL || 'https://example.onrender.com'
 }
