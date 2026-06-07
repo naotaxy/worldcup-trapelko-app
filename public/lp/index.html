@@ -131,7 +131,7 @@
       .hero-copy,
       .phone,
       .section,
-      .share-box {
+      .story-box {
         border: 1px solid rgba(214, 236, 255, 0.18);
         border-radius: 22px;
         background:
@@ -332,61 +332,33 @@
       }
 
       .section h2,
-      .share-box h2 {
+      .story-box h2 {
         color: #fff7dd;
         font-size: 22px;
         letter-spacing: 0;
       }
 
       .section p,
-      .share-box p {
+      .story-box p {
         margin-top: 10px;
         color: rgba(225, 234, 255, 0.78);
         font-size: 14px;
         line-height: 1.7;
       }
 
-      .share-box {
+      .story-box {
         margin-top: 18px;
         padding: 18px;
       }
 
-      .post {
-        margin-top: 12px;
-        padding: 14px;
-        border: 1px solid rgba(255, 232, 150, 0.26);
-        border-radius: 14px;
-        background: rgba(4, 13, 31, 0.54);
-        color: #f7fbff;
-        line-height: 1.7;
-      }
-
-      .post-meta {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 12px;
-        color: rgba(205, 219, 255, 0.72);
-        font-size: 13px;
-      }
-
-      .copy {
-        border: 1px solid rgba(214, 236, 255, 0.2);
-        border-radius: 10px;
-        background: rgba(255, 255, 255, 0.08);
-        color: #eef5ff;
-        cursor: pointer;
-        font: inherit;
-        font-weight: 900;
-        padding: 9px 12px;
-      }
-
-      .article {
+      .story {
         margin-top: 12px;
         color: rgba(225, 234, 255, 0.82);
         line-height: 1.8;
+      }
+
+      .story p + p {
+        margin-top: 10px;
       }
 
       .footer {
@@ -419,7 +391,7 @@
 
         .hero-copy,
         .section,
-        .share-box {
+        .story-box {
           border-radius: 18px;
         }
 
@@ -467,7 +439,7 @@
           </p>
           <div class="actions">
             <a class="button" href="https://worldcup-trapelko-app.onrender.com/">アプリを開く</a>
-            <a class="button secondary" href="#share">X投稿文を見る</a>
+            <a class="button secondary" href="#how-to-play">遊び方を見る</a>
           </div>
         </div>
 
@@ -533,18 +505,9 @@
         </article>
       </section>
 
-      <section class="share-box" id="share">
-        <h2>X紹介用の投稿文</h2>
-        <p>通常投稿の文字数制限内に収めた紹介文です。</p>
-        <div class="post" id="x-post">
-          W杯2026を友だちともっと楽しむためのドラフト集計アプリを作りました。国を取り合って、試合結果に合わせてポイントと順位が動きます。ルーム作成、非公開ピック、被りルーレット、最終予想グラフつき。無料で遊べます。 https://worldcup-trapelko-app.onrender.com/lp/
-        </div>
-        <div class="post-meta">
-          <span>152文字</span>
-          <button class="copy" type="button" id="copy-post">投稿文をコピー</button>
-          <a class="button secondary" href="https://twitter.com/intent/tweet?text=W%E6%9D%AF2026%E3%82%92%E5%8F%8B%E3%81%A0%E3%81%A1%E3%81%A8%E3%82%82%E3%81%A3%E3%81%A8%E6%A5%BD%E3%81%97%E3%82%80%E3%81%9F%E3%82%81%E3%81%AE%E3%83%89%E3%83%A9%E3%83%95%E3%83%88%E9%9B%86%E8%A8%88%E3%82%A2%E3%83%97%E3%83%AA%E3%82%92%E4%BD%9C%E3%82%8A%E3%81%BE%E3%81%97%E3%81%9F%E3%80%82%E5%9B%BD%E3%82%92%E5%8F%96%E3%82%8A%E5%90%88%E3%81%A3%E3%81%A6%E3%80%81%E8%A9%A6%E5%90%88%E7%B5%90%E6%9E%9C%E3%81%AB%E5%90%88%E3%82%8F%E3%81%9B%E3%81%A6%E3%83%9D%E3%82%A4%E3%83%B3%E3%83%88%E3%81%A8%E9%A0%86%E4%BD%8D%E3%81%8C%E5%8B%95%E3%81%8D%E3%81%BE%E3%81%99%E3%80%82%E3%83%AB%E3%83%BC%E3%83%A0%E4%BD%9C%E6%88%90%E3%80%81%E9%9D%9E%E5%85%AC%E9%96%8B%E3%83%94%E3%83%83%E3%82%AF%E3%80%81%E8%A2%AB%E3%82%8A%E3%83%AB%E3%83%BC%E3%83%AC%E3%83%83%E3%83%88%E3%80%81%E6%9C%80%E7%B5%82%E4%BA%88%E6%83%B3%E3%82%B0%E3%83%A9%E3%83%95%E3%81%A4%E3%81%8D%E3%80%82%E7%84%A1%E6%96%99%E3%81%A7%E9%81%8A%E3%81%B9%E3%81%BE%E3%81%99%E3%80%82%20https%3A%2F%2Fworldcup-trapelko-app.onrender.com%2Flp%2F" target="_blank" rel="noopener noreferrer">Xで投稿する</a>
-        </div>
-        <div class="article">
+      <section class="story-box" id="how-to-play">
+        <h2>大会中の楽しみ方</h2>
+        <div class="story">
           <p>
             W杯2026の観戦を、ただ試合を見るだけで終わらせないためのドラフト集計アプリです。参加者はそれぞれ出場国を選び、
             試合結果やボーナスに応じてポイントを獲得します。ランキングは自動で並び替わり、最終予想グラフで平均値や中央値も確認できます。
@@ -557,24 +520,8 @@
       </section>
 
       <p class="footer">
-        This app is an independent fan-made draft board and is not affiliated with FIFA, World Cup organizers, LINE, X, or any football association.
+        This app is an independent fan-made draft board and is not affiliated with FIFA, World Cup organizers, LINE, or any football association.
       </p>
     </div>
-
-    <script>
-      const button = document.getElementById("copy-post")
-      const post = document.getElementById("x-post")
-      button?.addEventListener("click", async () => {
-        try {
-          await navigator.clipboard.writeText(post?.textContent?.trim() || "")
-          button.textContent = "コピーしました"
-          window.setTimeout(() => {
-            button.textContent = "投稿文をコピー"
-          }, 1600)
-        } catch {
-          button.textContent = "コピーできませんでした"
-        }
-      })
-    </script>
   </body>
 </html>
