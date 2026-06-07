@@ -3,6 +3,7 @@ import type { CSSProperties, MutableRefObject, ReactNode } from 'react'
 import {
   BadgeCheck,
   Bell,
+  Coffee,
   ExternalLink,
   Gauge,
   Lock,
@@ -1003,6 +1004,8 @@ function App() {
         )}
       </section>
 
+      <SupportBar />
+
       {selectedTeamId
         ? (() => {
             const team = teams.find((entry) => entry.id === selectedTeamId)
@@ -1041,6 +1044,36 @@ function App() {
           })()
         : null}
     </main>
+  )
+}
+
+// Public donation links (no API keys; external links only). The PayPay P2P link
+// is a public receive link. Set the Stripe Payment Link URL once created in the
+// Stripe Dashboard (Payment Links) — it is a public buy.stripe.com URL.
+const SUPPORT_PAYPAY_URL = 'https://qr.paypay.ne.jp/p2p01_dtQeYi1ETPoCdhoi'
+const SUPPORT_STRIPE_URL = ''
+
+function SupportBar() {
+  if (!SUPPORT_PAYPAY_URL && !SUPPORT_STRIPE_URL) return null
+  return (
+    <footer className="support-bar">
+      <div className="support-text">
+        <Coffee size={16} />
+        <span>運営を応援（ビールを奢る / サンクスカード・任意）</span>
+      </div>
+      <div className="support-actions">
+        {SUPPORT_STRIPE_URL ? (
+          <a className="support-btn" href={SUPPORT_STRIPE_URL} target="_blank" rel="noopener noreferrer">
+            カードで応援
+          </a>
+        ) : null}
+        {SUPPORT_PAYPAY_URL ? (
+          <a className="support-btn paypay" href={SUPPORT_PAYPAY_URL} target="_blank" rel="noopener noreferrer">
+            PayPayで応援
+          </a>
+        ) : null}
+      </div>
+    </footer>
   )
 }
 

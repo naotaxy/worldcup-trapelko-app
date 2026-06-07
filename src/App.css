@@ -3029,3 +3029,50 @@ input {
   outline: none;
   border-color: rgba(255, 200, 84, 0.5);
 }
+
+/* ---- Support / donation bar ---- */
+.support-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px auto 0;
+  width: min(100%, 1100px);
+  padding: 12px 16px;
+  border-radius: 16px;
+  border: 1px solid rgba(150, 185, 255, 0.16);
+  background: rgba(20, 48, 100, 0.34);
+  backdrop-filter: blur(18px) saturate(1.1);
+}
+.support-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(225, 234, 255, 0.85);
+  font-size: 0.86rem;
+}
+.support-text svg {
+  color: #ffd564;
+}
+.support-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.support-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border-radius: 11px;
+  font-weight: 800;
+  font-size: 0.86rem;
+  text-decoration: none;
+  color: #11244e;
+  background: linear-gradient(160deg, #ffe89a, #ffc23d);
+}
+.support-btn.paypay {
+  color: #eaf0ff;
+  background: linear-gradient(160deg, #2f6df0, #1b54bd);
+}
