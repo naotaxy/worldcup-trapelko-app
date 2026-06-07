@@ -1051,7 +1051,7 @@ function App() {
 // is a public receive link. Set the Stripe Payment Link URL once created in the
 // Stripe Dashboard (Payment Links) — it is a public buy.stripe.com URL.
 const SUPPORT_PAYPAY_URL = 'https://qr.paypay.ne.jp/p2p01_dtQeYi1ETPoCdhoi'
-const SUPPORT_STRIPE_URL = ''
+const SUPPORT_STRIPE_URL = 'https://buy.stripe.com/test_bJecN40YtduZ7Wr3Ax7ss00'
 
 function SupportBar() {
   if (!SUPPORT_PAYPAY_URL && !SUPPORT_STRIPE_URL) return null
