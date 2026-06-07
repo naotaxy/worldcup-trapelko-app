@@ -1,20 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, MutableRefObject, ReactNode } from 'react'
+import type { CSSProperties, MutableRefObject } from 'react'
 import {
   BadgeCheck,
-  Bell,
   ExternalLink,
   Gauge,
-  Medal,
-  Network,
   RotateCcw,
   Save,
-  Settings,
   Shuffle,
-  Trophy,
   X,
 } from 'lucide-react'
 import './App.css'
+import bracketIcon from './assets/ui-icons/bracket.svg'
+import groupIcon from './assets/ui-icons/group.svg'
+import matchIcon from './assets/ui-icons/match.svg'
+import projectionIcon from './assets/ui-icons/projection.svg'
+import rankingIcon from './assets/ui-icons/ranking.svg'
+import rulesIcon from './assets/ui-icons/rules.svg'
+import slotIcon from './assets/ui-icons/slot.svg'
 import { CountrySlot, type SlotCountry } from './components/CountrySlot'
 import { playerInfoJa } from './data/playerInfoJa'
 import { pdfCountryInfo, pdfSquads, type PdfPlayer } from './data/wcPdf'
@@ -66,6 +68,16 @@ const ruleFields: Array<{ key: keyof Rules; label: string; min: number; max: num
 
 const maxTeamsPerMember = 8
 const maxOwnersPerTeam = 2
+
+const sectionLinks = [
+  { href: '#match-desk', label: '試合', icon: matchIcon },
+  { href: '#bracket', label: '組合せ', icon: bracketIcon },
+  { href: '#group-standings', label: '組', icon: groupIcon },
+  { href: '#member-ranking', label: '順位', icon: rankingIcon },
+  { href: '#projection-panel', label: '予想', icon: projectionIcon },
+  { href: '#draft-slot', label: '救済', icon: slotIcon },
+  { href: '#rules-lab', label: 'ルール', icon: rulesIcon },
+]
 
 const positionLabels: Record<PdfPlayer['pos'], string> = {
   GK: 'GK',
@@ -428,41 +440,19 @@ function App() {
       </div>
 
       <nav className="mobile-section-tabs" aria-label="sections">
-        <a href="#match-desk">
-          <Bell size={15} />
-          試合
-        </a>
-        <a href="#bracket">
-          <Network size={15} />
-          組合せ
-        </a>
-        <a href="#group-standings">
-          <Trophy size={15} />
-          組
-        </a>
-        <a href="#member-ranking">
-          <Medal size={15} />
-          順位
-        </a>
-        <a href="#projection-panel">
-          <Gauge size={15} />
-          予想
-        </a>
-        <a href="#draft-slot">
-          <Shuffle size={15} />
-          救済
-        </a>
-        <a href="#rules-lab">
-          <Settings size={15} />
-          ルール
-        </a>
+        {sectionLinks.map((item, index) => (
+          <a key={item.href} href={item.href} data-step={String(index + 1).padStart(2, '0')}>
+            <IconImage src={item.icon} className="nav-icon" />
+            <span>{item.label}</span>
+          </a>
+        ))}
       </nav>
 
       <section className="dashboard-grid">
         <details className="panel slot-panel rescue-slot-panel" id="draft-slot">
           <summary className="rescue-summary">
             <span>
-              <Shuffle size={18} />
+              <IconImage src={slotIcon} className="summary-icon" />
               <strong>救済スロット</strong>
             </span>
             <em>予選終了後だけ使用 / 対象{remainingTeams.length}チーム</em>
@@ -690,7 +680,7 @@ function App() {
         </details>
 
         <section className="panel group-panel" id="group-standings">
-          <PanelTitle icon={<Trophy size={18} />} title={`グループ${activeGroup} 順位`} note="国をタップで詳細" />
+          <PanelTitle iconSrc={groupIcon} title={`グループ${activeGroup} 順位`} note="国をタップで詳細" />
           <nav className="group-tabs" aria-label="groups">
             {groups.map((group) => (
               <button
@@ -738,7 +728,7 @@ function App() {
         </section>
 
         <section className="panel leaderboard-panel" id="member-ranking">
-          <PanelTitle icon={<Medal size={18} />} title="参加者ランキング" note="総合ポイント" />
+          <PanelTitle iconSrc={rankingIcon} title="参加者ランキング" note="総合ポイント" />
           <div className="leader-list">
             {memberStandings.map((row) => (
               <article key={row.member.id} className="leader-row">
@@ -775,7 +765,7 @@ function App() {
 
         <section className="panel projection-panel" id="projection-panel">
           <PanelTitle
-            icon={<Gauge size={18} />}
+            iconSrc={projectionIcon}
             title="最終予想グラフ"
             note={projectionMode === 'historyDemo' ? '過去デモ / 平均値 / 中央値' : '標準 / 平均値 / 中央値'}
           />
@@ -783,7 +773,7 @@ function App() {
         </section>
 
         <section className="panel match-panel" id="match-desk">
-          <PanelTitle icon={<Bell size={18} />} title="試合・結果" note="" />
+          <PanelTitle iconSrc={matchIcon} title="試合・結果" note="" />
           <div className="google-match-list">
             {activeMatches.map((match) => (
               <GoogleMatchCard
@@ -881,7 +871,7 @@ function App() {
         <details className="panel rules-panel" id="rules-lab">
           <summary className="rescue-summary">
             <span>
-              <Settings size={18} />
+              <IconImage src={rulesIcon} className="summary-icon" />
               <strong>ルール編集</strong>
             </span>
             <em>{saveLabel}</em>
@@ -977,7 +967,7 @@ function KnockoutBracket() {
 
   return (
     <section className="panel bracket-panel" id="bracket">
-      <PanelTitle icon={<Network size={18} />} title="決勝トーナメント 組合せ" note="" />
+      <PanelTitle iconSrc={bracketIcon} title="決勝トーナメント 組合せ" note="" />
       {!loaded ? (
         <p className="bracket-note">読み込み中…</p>
       ) : !rounds ? (
@@ -1019,11 +1009,15 @@ function BracketTeamRow({ team }: { team: BracketTeam }) {
   )
 }
 
-function PanelTitle({ icon, title, note }: { icon: ReactNode; title: string; note?: string }) {
+function IconImage({ src, className = 'ui-icon' }: { src: string; className?: string }) {
+  return <img className={className} src={src} alt="" aria-hidden="true" loading="lazy" decoding="async" />
+}
+
+function PanelTitle({ iconSrc, title, note }: { iconSrc: string; title: string; note?: string }) {
   return (
     <div className="panel-title">
-      <div>
-        {icon}
+      <div className="panel-title-main">
+        <IconImage src={iconSrc} className="panel-title-icon" />
         <h3>{title}</h3>
       </div>
       {note ? <span>{note}</span> : null}

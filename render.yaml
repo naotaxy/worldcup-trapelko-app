@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: worldcup-trapelko
+    name: eight-draft
     runtime: node
     plan: free
     buildCommand: npm ci && npm run build
@@ -11,6 +11,12 @@ services:
         value: production
       - key: PUBLIC_APP_URL
         sync: false
+      - key: DRAFT_EVENT_NAME
+        value: エイト・ドラフト
+      - key: LINE_ASSISTANT_NAME
+        value: ドラフト進行役
+      - key: GUIDE_MEMBER_ID
+        value: m-guide
       - key: LINE_LIFF_ID
         sync: false
       - key: LINE_CHANNEL_ID
@@ -19,8 +25,14 @@ services:
         sync: false
       - key: LINE_CHANNEL_ACCESS_TOKEN
         sync: false
+      - key: LINE_BOT_USER_ID
+        sync: false
+      - key: LINE_DRAFT_GROUP_NAME
+        sync: false
+      - key: LINE_DRAFT_GROUP_ID
+        sync: false
       - key: LINE_WC_GROUP_NAME
-        value: WC☆2026
+        sync: false
       - key: LINE_WC_GROUP_ID
         sync: false
       - key: SUPABASE_URL
@@ -37,6 +49,10 @@ services:
         sync: false
       - key: YAHOO_APP_ID
         sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        value: gemini-2.5-flash
       - key: FOOTBALL_DATA_TOKEN
         sync: false
       - key: SYNC_KEY

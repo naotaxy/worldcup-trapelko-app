@@ -1,13 +1,13 @@
-# AGENTS.md — worldcup-trapelko-app
+# AGENTS.md — eight-draft
 
-WC☆2026 W杯ドラフト/順位/最終予想/決勝T組合せボード。LINEグループ「WC☆2026」用、秘書トラペル子が自動実況。Claude と Codex が**同時開発**する前提のルールをここに集約する。作業前に必ず読むこと。
+エイト・ドラフト公開化作業のルール。旧W杯専用アプリを、任意の参加者が使える最大8人ドラフト/順位/最終予想ボードへ作り替える。Claude と Codex が**同時開発**する前提のルールをここに集約する。作業前に必ず読むこと。
 
 ## URL / インフラ
 - 本番(共有・LINEに貼る): https://worldcup-trapelko-app.onrender.com  (Render無料, mainを自動デプロイ)
 - 予備(静的): https://naotaxy.github.io/worldcup-trapelko-app/  (gh-pages, `npm run deploy:pages`)
 - GitHub: https://github.com/naotaxy/worldcup-trapelko-app (public)
 - Supabase: https://exhuqntorugqzblkcydl.supabase.co
-- LINE webhook: 現在チャネルwebhookはこのアプリの `/api/line/webhook` を指す(WC☆2026はW杯特化応答、非WCは `LINE_FORWARD_WEBHOOK_URL` の既存Botへ転送)。
+- LINE webhook: `/api/line/webhook`。公開版では `LINE_DRAFT_GROUP_ID` で対象LINEグループを固定し、対象外は `LINE_FORWARD_WEBHOOK_URL` の既存Botへ転送できる。対象グループ内ではBotへのメンション時のみ返信する。
 
 ## コマンド (作業後は最低 lint+build を必ず通す)
 ```bash
@@ -25,7 +25,7 @@ npm run deploy:pages   # GitHub Pages(gh-pages)へ配信 ※Actions不使用
 - フロント: `src/App.tsx` (単一の大コンポーネント), `src/App.css`, `src/index.css`
 - ロジック: `src/logic/score.ts` (順位/ポイント/内訳), `src/logic/projection.ts` (最終予想900回sim, mode: standard/oddsBased/historyDemo)
 - 静的データ: `src/data/worldCup2026.ts` (teams/fixtures/groups/members/selections/defaultRules/teamNamesJa/fifaRanking/worldCupHistory)
-- API/Bot: `server/index.mjs` (Express)。スコア・イベントはESPN無料API(主)＋football-data(予備)で自動取得→Supabase。トラペル子の実況/試合前プレビュー/ヘルプ応答/大会賞自動判定もここ。`src/logic/*.ts`/`src/data/*.ts`を実行時import(Node24型ストリップ。`.node-version`=24)。
+- API/Bot: `server/index.mjs` (Express)。スコア・イベントはESPN無料API(主)＋football-data(予備)で自動取得→Supabase。ドラフト進行役の通知/試合前プレビュー/ヘルプ応答/大会賞自動判定もここ。`src/logic/*.ts`/`src/data/*.ts`を実行時import(Node24型ストリップ。`.node-version`=24)。
 
 ## 生成ファイル(手編集禁止・生成スクリプトで再生成すること)
 - `src/data/playerInfoJa.ts` ← `npm run player-info:generate` (Wikidata: カタカナ名/写真/身長/生年月日/クラブ)
@@ -34,11 +34,11 @@ npm run deploy:pages   # GitHub Pages(gh-pages)へ配信 ※Actions不使用
 - これらでrebase衝突したら、マージせず該当スクリプトを再実行して上書きする。
 
 ## 本番Render環境変数 (sync:false)
-`SUPABASE_URL` `SUPABASE_SERVICE_ROLE_KEY` `LINE_CHANNEL_ACCESS_TOKEN` `LINE_CHANNEL_SECRET` `LINE_WC_GROUP_ID=Cd0143687dfae628d3b9617b997344618` `FOOTBALL_DATA_TOKEN` `LINE_FORWARD_WEBHOOK_URL`(既存Bot webhook) / 任意: `SYNC_KEY` `LINE_LIFF_ID` `SYNC_INTERVAL_MS`。ESPNはキー不要。
+`SUPABASE_URL` `SUPABASE_SERVICE_ROLE_KEY` `LINE_CHANNEL_ACCESS_TOKEN` `LINE_CHANNEL_SECRET` `LINE_DRAFT_GROUP_ID` `FOOTBALL_DATA_TOKEN` `LINE_FORWARD_WEBHOOK_URL`(既存Bot webhook) / 任意: `DRAFT_EVENT_NAME` `LINE_ASSISTANT_NAME` `GUIDE_MEMBER_ID` `LINE_BOT_USER_ID` `GEMINI_API_KEY` `GEMINI_MODEL` `SYNC_KEY` `LINE_LIFF_ID` `SYNC_INTERVAL_MS`。ESPNはキー不要。実ID・トークン・個人名をこのファイルやREADMEへ書かない。
 
 ## 厳守ルール
 - **絵文字は一切使わない**(UI・コード・コミット・通知すべて)。
-- UIは日本語。秘書トラペル子の口調を保つ。
+- UIは日本語。公開版では特定の個人名・私的グループ名・旧キャラクター名を固定しない。
 - 秘密(キー/トークン)はコードに書かない。env経由。
 - ニュース(ゲキサカ等)本文の転載はしない。見出し/要約/リンク誘導のみ。
 - 目的外の大規模リファクタや未コミット差分の削除をしない。
