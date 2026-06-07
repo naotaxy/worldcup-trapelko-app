@@ -583,10 +583,16 @@ function App() {
       </nav>
 
       <section className="dashboard-grid">
-        <section className="panel room-panel" id="rooms">
-          <PanelTitle icon={<Users size={18} />} title="ルーム対戦" note="みんなで遊ぶ" />
+        <details className="panel room-panel" id="rooms">
+          <summary className="rescue-summary">
+            <span>
+              <Users size={18} />
+              <strong>ルーム対戦</strong>
+            </span>
+            <em>みんなで遊ぶ</em>
+          </summary>
           <RoomsPanel teamStandings={teamStandings} />
-        </section>
+        </details>
         {boardUnlocked ? (
           <>
         <AnalyticsPanel summary={analyticsSummary} loaded={analyticsLoaded} />
@@ -1190,8 +1196,14 @@ function AnalyticsPanel({ summary, loaded }: { summary: AnalyticsSummary | null;
   const maxVisits = daily.reduce((max, row) => Math.max(max, row.visits), 0)
 
   return (
-    <section className="panel analytics-panel" id="analytics-panel">
-      <PanelTitle icon={<Gauge size={18} />} title="アクセス分析" note="合言葉限定" />
+    <details className="panel analytics-panel" id="analytics-panel">
+      <summary className="rescue-summary">
+        <span>
+          <Gauge size={18} />
+          <strong>アクセス分析</strong>
+        </span>
+        <em>合言葉限定</em>
+      </summary>
       {!loaded ? (
         <p className="analytics-note">読み込み中…</p>
       ) : !summary ? (
@@ -1233,7 +1245,7 @@ function AnalyticsPanel({ summary, loaded }: { summary: AnalyticsSummary | null;
           </div>
         </>
       )}
-    </section>
+    </details>
   )
 }
 
