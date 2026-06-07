@@ -595,8 +595,6 @@ function App() {
         </details>
         {boardUnlocked ? (
           <>
-        <AnalyticsPanel summary={analyticsSummary} loaded={analyticsLoaded} />
-
         <details className="panel slot-panel rescue-slot-panel" id="draft-slot">
           <summary className="rescue-summary">
             <span>
@@ -1054,6 +1052,7 @@ function App() {
             ルール保存
           </button>
         </details>
+        <AnalyticsPanel summary={analyticsSummary} loaded={analyticsLoaded} />
           </>
         ) : (
           <BoardGatePanel onSubmit={applyBoardKey} busy={boardBusy} error={boardError} />
