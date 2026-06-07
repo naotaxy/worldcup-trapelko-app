@@ -1054,26 +1054,45 @@ const SUPPORT_PAYPAY_URL = 'https://qr.paypay.ne.jp/p2p01_dtQeYi1ETPoCdhoi'
 const SUPPORT_STRIPE_URL = ''
 
 function SupportBar() {
+  const [showPaypay, setShowPaypay] = useState(false)
   if (!SUPPORT_PAYPAY_URL && !SUPPORT_STRIPE_URL) return null
+  const qrSrc = `${import.meta.env.BASE_URL}paypay-qr.png`
   return (
-    <footer className="support-bar">
-      <div className="support-text">
-        <Coffee size={16} />
-        <span>運営を応援（ビールを奢る / サンクスカード・任意）</span>
-      </div>
-      <div className="support-actions">
-        {SUPPORT_STRIPE_URL ? (
-          <a className="support-btn" href={SUPPORT_STRIPE_URL} target="_blank" rel="noopener noreferrer">
-            カードで応援
-          </a>
-        ) : null}
-        {SUPPORT_PAYPAY_URL ? (
-          <a className="support-btn paypay" href={SUPPORT_PAYPAY_URL} target="_blank" rel="noopener noreferrer">
-            PayPayで応援
-          </a>
-        ) : null}
-      </div>
-    </footer>
+    <>
+      <footer className="support-bar">
+        <div className="support-text">
+          <Coffee size={16} />
+          <span>運営を応援（ビールを奢る / サンクスカード・任意）</span>
+        </div>
+        <div className="support-actions">
+          {SUPPORT_STRIPE_URL ? (
+            <a className="support-btn" href={SUPPORT_STRIPE_URL} target="_blank" rel="noopener noreferrer">
+              カードで応援
+            </a>
+          ) : null}
+          {SUPPORT_PAYPAY_URL ? (
+            <button type="button" className="support-btn paypay" onClick={() => setShowPaypay(true)}>
+              PayPayで応援
+            </button>
+          ) : null}
+        </div>
+      </footer>
+      {showPaypay ? (
+        <div className="paypay-overlay" role="presentation" onClick={() => setShowPaypay(false)}>
+          <div className="paypay-qr-card" role="dialog" aria-label="PayPayで応援" onClick={(event) => event.stopPropagation()}>
+            <button type="button" className="paypay-close" aria-label="閉じる" onClick={() => setShowPaypay(false)}>
+              <X size={18} />
+            </button>
+            <h4>PayPayで応援</h4>
+            <img src={qrSrc} alt="PayPay 送金QRコード" />
+            <p>QRを読み取るか、スマホは下のボタンでPayPayアプリが開きます。</p>
+            <a className="support-btn paypay" href={SUPPORT_PAYPAY_URL} target="_blank" rel="noopener noreferrer">
+              PayPayアプリで開く
+            </a>
+          </div>
+        </div>
+      ) : null}
+    </>
   )
 }
 
