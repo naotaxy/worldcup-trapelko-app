@@ -740,7 +740,7 @@ function App() {
         </section>
 
         <section className="panel leaderboard-panel" id="member-ranking">
-          <PanelTitle icon={<Medal size={18} />} title="参加者ランキング" note="遊びポイント" />
+          <PanelTitle icon={<Medal size={18} />} title="参加者ランキング" note="総合ポイント" />
           <div className="leader-list">
             {memberStandings.map((row) => (
               <article key={row.member.id} className="leader-row">
@@ -785,7 +785,7 @@ function App() {
         </section>
 
         <section className="panel match-panel" id="match-desk">
-          <PanelTitle icon={<Bell size={18} />} title="試合・結果" note="Google風カード / LINE通知対象" />
+          <PanelTitle icon={<Bell size={18} />} title="試合・結果" note="" />
           <div className="google-match-list">
             {activeMatches.map((match) => (
               <GoogleMatchCard
@@ -880,8 +880,14 @@ function App() {
 
         <KnockoutBracket />
 
-        <section className="panel rules-panel" id="rules-lab">
-          <PanelTitle icon={<Settings size={18} />} title="ルール編集" note={saveLabel} />
+        <details className="panel rules-panel" id="rules-lab">
+          <summary className="rescue-summary">
+            <span>
+              <Settings size={18} />
+              <strong>ルール編集</strong>
+            </span>
+            <em>{saveLabel}</em>
+          </summary>
           <div className="rule-grid">
             {ruleFields.map((field) => (
               <label key={field.key} className="rule-control">
@@ -911,8 +917,7 @@ function App() {
             <Save size={16} />
             ルール保存
           </button>
-        </section>
-
+        </details>
       </section>
 
       {selectedTeamId
@@ -974,7 +979,7 @@ function KnockoutBracket() {
 
   return (
     <section className="panel bracket-panel" id="bracket">
-      <PanelTitle icon={<Network size={18} />} title="決勝トーナメント 組合せ" note="ESPN自動取得" />
+      <PanelTitle icon={<Network size={18} />} title="決勝トーナメント 組合せ" note="" />
       {!loaded ? (
         <p className="bracket-note">読み込み中…</p>
       ) : !rounds ? (
@@ -1016,14 +1021,14 @@ function BracketTeamRow({ team }: { team: BracketTeam }) {
   )
 }
 
-function PanelTitle({ icon, title, note }: { icon: ReactNode; title: string; note: string }) {
+function PanelTitle({ icon, title, note }: { icon: ReactNode; title: string; note?: string }) {
   return (
     <div className="panel-title">
       <div>
         {icon}
         <h3>{title}</h3>
       </div>
-      <span>{note}</span>
+      {note ? <span>{note}</span> : null}
     </div>
   )
 }
