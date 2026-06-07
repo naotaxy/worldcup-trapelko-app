@@ -1,19 +1,19 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" fill="none">
   <defs>
-    <linearGradient id="g" x1="23" y1="22" x2="75" y2="76" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#7DF1FF"/>
-      <stop offset=".52" stop-color="#74F0D4"/>
-      <stop offset="1" stop-color="#FFD86B"/>
+    <linearGradient id="knob" x1="24" y1="28" x2="72" y2="68" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#86F5FF"/>
+      <stop offset=".5" stop-color="#7FF4D8"/>
+      <stop offset="1" stop-color="#FFE27B"/>
     </linearGradient>
-    <linearGradient id="b" x1="10" y1="10" x2="86" y2="86" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#FFFFFF" stop-opacity=".84"/>
-      <stop offset="1" stop-color="#FFFFFF" stop-opacity=".16"/>
-    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="8" stdDeviation="5" flood-color="#031226" flood-opacity=".38"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="2" flood-color="#7FF4D8" flood-opacity=".28"/>
+    </filter>
   </defs>
-  <rect x="10" y="10" width="76" height="76" rx="24" fill="#071B38" fill-opacity=".52"/>
-  <rect x="10" y="10" width="76" height="76" rx="24" stroke="url(#b)" stroke-width="2"/>
-  <path d="M28 35h40M28 49h40M28 63h40" stroke="#F6FBFF" stroke-width="5" stroke-linecap="round"/>
-  <circle cx="41" cy="35" r="7" fill="#071B38" stroke="url(#g)" stroke-width="4"/>
-  <circle cx="58" cy="49" r="7" fill="#071B38" stroke="url(#g)" stroke-width="4"/>
-  <circle cx="36" cy="63" r="7" fill="#071B38" stroke="url(#g)" stroke-width="4"/>
+  <g filter="url(#glow)" stroke-linecap="round">
+    <path d="M25 32h46M25 48h46M25 64h46" stroke="#F7FBFF" stroke-width="6"/>
+    <circle cx="39" cy="32" r="8" fill="#061633" stroke="url(#knob)" stroke-width="5"/>
+    <circle cx="57" cy="48" r="8" fill="#061633" stroke="url(#knob)" stroke-width="5"/>
+    <circle cx="35" cy="64" r="8" fill="#061633" stroke="url(#knob)" stroke-width="5"/>
+  </g>
 </svg>
