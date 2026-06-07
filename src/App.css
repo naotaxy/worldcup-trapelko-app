@@ -3000,3 +3000,32 @@ input {
     grid-template-columns: 1fr;
   }
 }
+
+/* ---- Insider board gate ---- */
+.board-gate {
+  grid-column: 1 / -1;
+}
+.board-gate-note {
+  color: rgba(205, 219, 255, 0.78);
+  font-size: 0.86rem;
+  margin: 6px 0 12px;
+}
+.board-gate-form {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.board-gate-form input {
+  flex: 1;
+  min-width: 160px;
+  padding: 10px 12px;
+  border-radius: 11px;
+  font-size: 0.95rem;
+  border: 1px solid rgba(150, 185, 255, 0.22);
+  background: rgba(8, 22, 54, 0.5);
+  color: #eaf0ff;
+}
+.board-gate-form input:focus {
+  outline: none;
+  border-color: rgba(255, 200, 84, 0.5);
+}

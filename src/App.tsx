@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { CSSProperties, MutableRefObject, ReactNode } from 'react'
 import {
   BadgeCheck,
   Bell,
   ExternalLink,
   Gauge,
+  Lock,
   Medal,
   Network,
   RotateCcw,
@@ -22,7 +23,7 @@ import { playerInfoJa } from './data/playerInfoJa'
 import { pdfCountryInfo, pdfSquads, type PdfPlayer } from './data/wcPdf'
 import {
   defaultRules,
-  demoMembers,
+  demoMembers as seedMembers,
   demoSelections,
   fifaRanking,
   fixtures,
@@ -42,8 +43,8 @@ import {
   type TeamBreakdown,
 } from './logic/score'
 import { calculateFinalProjections, type MemberProjection, type ProjectionMode } from './logic/projection'
-import type { AwardSettings, GroupCode, Match, MatchResult, Rules, Team, TeamSelection } from './types'
-import { fetchSharedState, pushResult, pushRules, type PlayerStat } from './lib/api'
+import type { AwardSettings, GroupCode, Match, MatchResult, Member, Rules, Team, TeamSelection } from './types'
+import { fetchSharedState, pushResult, pushRules, unlockBoard, type PlayerStat } from './lib/api'
 import { fetchTournament, type BracketMatch, type BracketRound, type BracketTeam } from './lib/bracket'
 import { loadLocalState, saveLocalState } from './lib/persistence'
 
@@ -100,6 +101,68 @@ function initialLocalState() {
 
 function App() {
   const slotTimerRef = useRef<number | null>(null)
+  // Insider board gate. The bundle ships placeholder member names; real names are
+  // fetched from Supabase only after the passphrase is entered. `demoMembers`
+  // below overlays the real names so the rest of the component is unchanged.
+  const [boardUnlocked, setBoardUnlocked] = useState(false)
+  const [boardError, setBoardError] = useState('')
+  const [boardBusy, setBoardBusy] = useState(false)
+  const [memberOverlay, setMemberOverlay] = useState<Record<string, { name: string; avatar: string }>>({})
+  const demoMembers = useMemo(
+    () => seedMembers.map((m) => (memberOverlay[m.id] ? { ...m, ...memberOverlay[m.id] } : m)),
+    [memberOverlay],
+  )
+  const applyBoardKey = useCallback(async (passphrase: string): Promise<boolean> => {
+    if (!passphrase) return false
+    setBoardBusy(true)
+    setBoardError('')
+    const res = await unlockBoard(passphrase)
+    setBoardBusy(false)
+    if (res?.ok && Array.isArray(res.members)) {
+      const overlay: Record<string, { name: string; avatar: string }> = {}
+      for (const m of res.members) overlay[m.id] = { name: m.name, avatar: m.avatar || m.name.slice(0, 1) }
+      setMemberOverlay(overlay)
+      setBoardUnlocked(true)
+      try {
+        localStorage.setItem('wc-board-key', passphrase)
+      } catch {
+        // ignore storage failures
+      }
+      return true
+    }
+    setBoardError('合言葉が違います')
+    return false
+  }, [])
+  // Re-unlock silently on load if this device already holds the passphrase.
+  useEffect(() => {
+    let cancelled = false
+    let stored = ''
+    try {
+      stored = localStorage.getItem('wc-board-key') || ''
+    } catch {
+      stored = ''
+    }
+    if (!stored) return
+    void (async () => {
+      const res = await unlockBoard(stored)
+      if (cancelled) return
+      if (res?.ok && Array.isArray(res.members)) {
+        const overlay: Record<string, { name: string; avatar: string }> = {}
+        for (const m of res.members) overlay[m.id] = { name: m.name, avatar: m.avatar || m.name.slice(0, 1) }
+        setMemberOverlay(overlay)
+        setBoardUnlocked(true)
+      } else {
+        try {
+          localStorage.removeItem('wc-board-key')
+        } catch {
+          // ignore
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const [activeGroup, setActiveGroup] = useState<GroupCode>('F')
   const [rules, setRules] = useState<Rules>(() => initialLocalState()?.rules ?? defaultRules)
   const [awards, setAwards] = useState<AwardSettings>(() => initialLocalState()?.awards ?? defaultAwards)
@@ -177,7 +240,7 @@ function App() {
   const teamStandings = useMemo(() => calculateTeamStandings(groups, liveFixtures, rules, awards), [awards, liveFixtures, rules])
   const memberStandings = useMemo(
     () => calculateMemberStandings(demoMembers, draftSelections, teamStandings),
-    [draftSelections, teamStandings],
+    [demoMembers, draftSelections, teamStandings],
   )
   const oddsProbs = useMemo(() => {
     const out: Record<string, { home: number; draw: number; away: number }> = {}
@@ -197,7 +260,7 @@ function App() {
   }, [odds])
   const memberProjections = useMemo(
     () => calculateFinalProjections(demoMembers, draftSelections, groups, liveFixtures, rules, awards, projectionMode, oddsProbs),
-    [awards, draftSelections, liveFixtures, oddsProbs, projectionMode, rules],
+    [awards, demoMembers, draftSelections, liveFixtures, oddsProbs, projectionMode, rules],
   )
   const activeRows = useMemo(() => groupStandings(teamStandings, activeGroup), [teamStandings, activeGroup])
   const activeMatches = useMemo(() => liveFixtures.filter((match) => match.group === activeGroup), [liveFixtures, activeGroup])
@@ -216,7 +279,7 @@ function App() {
     })
     ownerGroups.forEach((names, teamId) => owners.set(teamId, names.join(' / ')))
     return owners
-  }, [draftSelections])
+  }, [demoMembers, draftSelections])
 
   const teamPickCounts = useMemo(() => {
     const counts = new Map<string, number>()
@@ -351,7 +414,7 @@ function App() {
 
   const confirmSlotPick = () => {
     if (!slotResultTeam || slotPhase !== 'ready') return
-    const validation = validateSelection(draftSelections, draftMember.id, slotResultTeam.id)
+    const validation = validateSelection(draftSelections, draftMember.id, slotResultTeam.id, demoMembers)
     if (validation) {
       setSlotMessage(validation)
       return
@@ -367,7 +430,7 @@ function App() {
   }
 
   const addManualDecision = () => {
-    const validation = validateSelection(draftSelections, manualMember.id, manualTeam.id)
+    const validation = validateSelection(draftSelections, manualMember.id, manualTeam.id, demoMembers)
     if (validation) {
       setManualMessage(validation)
       return
@@ -388,7 +451,9 @@ function App() {
       return
     }
 
-    const eligibleMemberIds = conflictMemberIds.filter((memberId) => validateSelection(draftSelections, memberId, conflictTeam.id) === null)
+    const eligibleMemberIds = conflictMemberIds.filter(
+      (memberId) => validateSelection(draftSelections, memberId, conflictTeam.id, demoMembers) === null,
+    )
     if (eligibleMemberIds.length === 0) {
       setConflictMessage('登録できる候補者がいません')
       return
@@ -397,7 +462,7 @@ function App() {
     const winners = shuffleIds(eligibleMemberIds).slice(0, Math.min(conflictOpenSlots, eligibleMemberIds.length))
     setDraftSelections((current) => [...current, ...winners.map((memberId) => ({ memberId, teamId: conflictTeam.id }))])
     setConflictResultMemberIds(winners)
-    setConflictMessage(`${teamNameJa(conflictTeam.id)}は${memberNames(winners)}に決定しました`)
+    setConflictMessage(`${teamNameJa(conflictTeam.id)}は${memberNames(winners, demoMembers)}に決定しました`)
   }
 
   const toggleConflictMember = (memberId: string) => {
@@ -434,6 +499,8 @@ function App() {
           <Users size={15} />
           ルーム
         </a>
+        {boardUnlocked ? (
+          <>
         <a href="#match-desk">
           <Bell size={15} />
           試合
@@ -462,6 +529,8 @@ function App() {
           <Settings size={15} />
           ルール
         </a>
+          </>
+        ) : null}
       </nav>
 
       <section className="dashboard-grid">
@@ -469,6 +538,8 @@ function App() {
           <PanelTitle icon={<Users size={18} />} title="ルーム対戦" note="みんなで遊ぶ" />
           <RoomsPanel teamStandings={teamStandings} />
         </section>
+        {boardUnlocked ? (
+          <>
         <details className="panel slot-panel rescue-slot-panel" id="draft-slot">
           <summary className="rescue-summary">
             <span>
@@ -926,6 +997,10 @@ function App() {
             ルール保存
           </button>
         </details>
+          </>
+        ) : (
+          <BoardGatePanel onSubmit={applyBoardKey} busy={boardBusy} error={boardError} />
+        )}
       </section>
 
       {selectedTeamId
@@ -966,6 +1041,45 @@ function App() {
           })()
         : null}
     </main>
+  )
+}
+
+function BoardGatePanel({
+  onSubmit,
+  busy,
+  error,
+}: {
+  onSubmit: (passphrase: string) => void
+  busy: boolean
+  error: string
+}) {
+  const [value, setValue] = useState('')
+  return (
+    <section className="panel board-gate" id="board-gate">
+      <PanelTitle icon={<Lock size={18} />} title="身内ボード" note="合言葉で表示" />
+      <p className="board-gate-note">
+        参加者ランキング・最終予想・救済スロットなどの身内ボードは、合言葉を入れた人だけに表示されます。
+      </p>
+      <form
+        className="board-gate-form"
+        onSubmit={(event) => {
+          event.preventDefault()
+          onSubmit(value)
+        }}
+      >
+        <input
+          type="password"
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          placeholder="合言葉"
+          autoComplete="current-password"
+        />
+        <button type="submit" className="room-primary" disabled={busy || !value}>
+          開く
+        </button>
+      </form>
+      {error ? <p className="room-error">{error}</p> : null}
+    </section>
   )
 }
 
@@ -1429,11 +1543,11 @@ function slotCountryFromTeam(team: Team): SlotCountry {
 function nextAvailableMemberId(selections: TeamSelection[], currentId: string): string {
   const currentIndex = Math.max(
     0,
-    demoMembers.findIndex((member) => member.id === currentId),
+    seedMembers.findIndex((member) => member.id === currentId),
   )
 
-  for (let offset = 1; offset <= demoMembers.length; offset += 1) {
-    const member = demoMembers[(currentIndex + offset) % demoMembers.length]
+  for (let offset = 1; offset <= seedMembers.length; offset += 1) {
+    const member = seedMembers[(currentIndex + offset) % seedMembers.length]
     const pickCount = memberPickCountOf(selections, member.id)
     if (pickCount < maxTeamsPerMember) return member.id
   }
@@ -1441,8 +1555,13 @@ function nextAvailableMemberId(selections: TeamSelection[], currentId: string): 
   return currentId
 }
 
-function validateSelection(selections: TeamSelection[], memberId: string, teamId: string): string | null {
-  const member = demoMembers.find((entry) => entry.id === memberId)
+function validateSelection(
+  selections: TeamSelection[],
+  memberId: string,
+  teamId: string,
+  members: Member[],
+): string | null {
+  const member = members.find((entry) => entry.id === memberId)
   const team = teams.find((entry) => entry.id === teamId)
   if (!member || !team) return '参加者または国が見つかりません'
   if (selections.some((selection) => selection.memberId === memberId && selection.teamId === teamId)) {
@@ -1469,9 +1588,9 @@ function shuffleIds(ids: string[]): string[] {
   return [...ids].sort(() => Math.random() - 0.5)
 }
 
-function memberNames(memberIds: string[]): string {
+function memberNames(memberIds: string[], members: Member[]): string {
   return memberIds
-    .map((memberId) => demoMembers.find((member) => member.id === memberId)?.name || memberId)
+    .map((memberId) => members.find((member) => member.id === memberId)?.name || memberId)
     .join('、')
 }
 

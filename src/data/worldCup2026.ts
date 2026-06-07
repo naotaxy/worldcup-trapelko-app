@@ -150,15 +150,18 @@ export const previewResults: Record<string, { home: number; away: number }> = {
   'L-1': { home: 2, away: 1 },
 }
 
+// Placeholder display names only. The real participant names live in Supabase
+// (members.real_name) and are shown to insiders after the board passphrase is
+// entered (POST /api/board/unlock). Keep the ids in sync with member_key.
 export const demoMembers: Member[] = [
-  { id: 'm-kono', name: '河野', lineName: 'kono', avatar: '河', accent: '#e23d3d' },
-  { id: 'm-yabe', name: '矢部', lineName: 'yabe', avatar: '矢', accent: '#38a9a6' },
-  { id: 'm-okamoto', name: '岡本', lineName: 'okamoto', avatar: '岡', accent: '#e0b336' },
-  { id: 'm-satake', name: '佐竹', lineName: 'satake', avatar: '佐', accent: '#9854d7' },
-  { id: 'm-kodama', name: '児玉', lineName: 'kodama', avatar: '児', accent: '#2ca36a' },
-  { id: 'm-shibata', name: '柴田', lineName: 'shibata', avatar: '柴', accent: '#d9632c' },
-  { id: 'm-yonezawa', name: '米澤', lineName: 'yonezawa', avatar: '米', accent: '#4f7fdd' },
-  { id: 'm-trapelko', name: '秘書トラペル子', lineName: 'trapelko-npc', avatar: '秘', accent: '#c93e79' },
+  { id: 'm-kono', name: 'プレイヤー1', lineName: 'player1', avatar: '1', accent: '#e23d3d' },
+  { id: 'm-yabe', name: 'プレイヤー2', lineName: 'player2', avatar: '2', accent: '#38a9a6' },
+  { id: 'm-okamoto', name: 'プレイヤー3', lineName: 'player3', avatar: '3', accent: '#e0b336' },
+  { id: 'm-satake', name: 'プレイヤー4', lineName: 'player4', avatar: '4', accent: '#9854d7' },
+  { id: 'm-kodama', name: 'プレイヤー5', lineName: 'player5', avatar: '5', accent: '#2ca36a' },
+  { id: 'm-shibata', name: 'プレイヤー6', lineName: 'player6', avatar: '6', accent: '#d9632c' },
+  { id: 'm-yonezawa', name: 'プレイヤー7', lineName: 'player7', avatar: '7', accent: '#4f7fdd' },
+  { id: 'm-trapelko', name: 'ガイド', lineName: 'guide', avatar: 'G', accent: '#c93e79' },
 ]
 
 export const demoSelections: TeamSelection[] = [

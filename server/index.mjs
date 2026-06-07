@@ -619,6 +619,29 @@ app.post('/api/rooms/:code/reveal', async (req, res) => {
   })
 })
 
+// Unlock the insider board: returns real participant names from Supabase only
+// when the correct passphrase is supplied. The passphrase + names live on the
+// server (BOARD_PASSPHRASE env + DB), never in the public client bundle.
+app.post('/api/board/unlock', async (req, res) => {
+  const passphrase = req.body && typeof req.body.passphrase === 'string' ? req.body.passphrase : ''
+  const expected = process.env.BOARD_PASSPHRASE || ''
+  if (!expected || passphrase !== expected) {
+    res.json({ ok: false })
+    return
+  }
+  let members = []
+  if (supabase) {
+    const { data } = await supabase.from('members').select('member_key, real_name, line_display_name')
+    members = (data || [])
+      .filter((m) => m.member_key)
+      .map((m) => {
+        const name = m.real_name || m.line_display_name || m.member_key
+        return { id: m.member_key, name, avatar: name.slice(0, 1) }
+      })
+  }
+  res.json({ ok: true, members })
+})
+
 app.get('/api/rules', (_req, res) => {
   res.json({
     ok: true,

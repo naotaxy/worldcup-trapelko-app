@@ -95,6 +95,12 @@ export async function pushRules(rules: Rules, awards: AwardSettings): Promise<bo
   return Boolean(out?.ok)
 }
 
+export async function unlockBoard(
+  passphrase: string,
+): Promise<{ ok: boolean; members?: { id: string; name: string; avatar: string }[] } | null> {
+  return postJson('/api/board/unlock', { passphrase })
+}
+
 export async function linkLineMember(profile: {
   lineUserId: string
   displayName?: string
