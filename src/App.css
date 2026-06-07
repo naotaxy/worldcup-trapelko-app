@@ -3030,6 +3030,88 @@ input {
   border-color: rgba(255, 200, 84, 0.5);
 }
 
+/* ---- Board-only analytics ---- */
+.analytics-panel {
+  grid-column: 1 / -1;
+}
+.analytics-note {
+  margin: 8px 16px 16px;
+  color: rgba(205, 219, 255, 0.78);
+  font-size: 0.86rem;
+}
+.analytics-metrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px 16px 10px;
+}
+.analytics-metrics article {
+  border: 1px solid rgba(150, 185, 255, 0.16);
+  border-radius: 12px;
+  padding: 11px 12px;
+  background: rgba(8, 22, 54, 0.36);
+}
+.analytics-metrics span {
+  display: block;
+  color: rgba(200, 215, 255, 0.68);
+  font-size: 0.76rem;
+  margin-bottom: 5px;
+}
+.analytics-metrics strong {
+  color: #ffe6a6;
+  font-size: 1.25rem;
+  line-height: 1;
+}
+.analytics-trend {
+  display: grid;
+  gap: 6px;
+  margin: 4px 16px 16px;
+}
+.analytics-bar-row {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) 54px 52px;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  border: 1px solid rgba(150, 185, 255, 0.12);
+  background: rgba(150, 185, 255, 0.04);
+  color: rgba(225, 234, 255, 0.82);
+  font-size: 0.8rem;
+}
+.analytics-bar-track {
+  height: 8px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(8, 22, 54, 0.62);
+  box-shadow: inset 0 0 0 1px rgba(150, 185, 255, 0.12);
+}
+.analytics-bar-track i {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(255, 232, 154, 0.85), rgba(255, 194, 61, 0.88));
+}
+.analytics-bar-row strong {
+  text-align: right;
+  color: #ffe6a6;
+}
+.analytics-bar-row em {
+  color: rgba(200, 215, 255, 0.64);
+  font-style: normal;
+  text-align: right;
+}
+@media (max-width: 700px) {
+  .analytics-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .analytics-bar-row {
+    grid-template-columns: 42px minmax(0, 1fr) 40px 42px;
+    gap: 6px;
+    font-size: 0.74rem;
+  }
+}
+
 /* ---- Support / donation bar ---- */
 .support-bar {
   display: flex;

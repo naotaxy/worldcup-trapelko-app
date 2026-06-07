@@ -29,6 +29,23 @@ export type Bootstrap = {
   lineGroupLocked: boolean
 }
 
+export type AnalyticsDailySummary = {
+  day: string
+  visits: number
+  uniques: number
+}
+
+export type AnalyticsSummary = {
+  ok: true
+  totalVisits: number
+  uniqueVisitors: number
+  today: {
+    visits: number
+    uniques: number
+  }
+  daily: AnalyticsDailySummary[]
+}
+
 async function getJson<T>(path: string): Promise<T | null> {
   try {
     const res = await fetch(path, { headers: { accept: 'application/json' } })
@@ -99,6 +116,16 @@ export async function unlockBoard(
   passphrase: string,
 ): Promise<{ ok: boolean; members?: { id: string; name: string; avatar: string }[] } | null> {
   return postJson('/api/board/unlock', { passphrase })
+}
+
+export async function recordVisit(visitorId: string): Promise<void> {
+  if (!visitorId) return
+  await postJson<{ ok: boolean }>('/api/analytics/hit', { visitorId })
+}
+
+export async function fetchAnalyticsSummary(key: string): Promise<AnalyticsSummary | null> {
+  const summary = await getJson<AnalyticsSummary>(`/api/analytics/summary?key=${encodeURIComponent(key)}`)
+  return summary?.ok ? summary : null
 }
 
 export async function linkLineMember(profile: {

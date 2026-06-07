@@ -45,7 +45,16 @@ import {
 } from './logic/score'
 import { calculateFinalProjections, type MemberProjection, type ProjectionMode } from './logic/projection'
 import type { AwardSettings, GroupCode, Match, MatchResult, Member, Rules, Team, TeamSelection } from './types'
-import { fetchSharedState, pushResult, pushRules, unlockBoard, type PlayerStat } from './lib/api'
+import {
+  fetchAnalyticsSummary,
+  fetchSharedState,
+  pushResult,
+  pushRules,
+  recordVisit,
+  unlockBoard,
+  type AnalyticsSummary,
+  type PlayerStat,
+} from './lib/api'
 import { fetchTournament, type BracketMatch, type BracketRound, type BracketTeam } from './lib/bracket'
 import { loadLocalState, saveLocalState } from './lib/persistence'
 
@@ -109,6 +118,8 @@ function App() {
   const [boardError, setBoardError] = useState('')
   const [boardBusy, setBoardBusy] = useState(false)
   const [memberOverlay, setMemberOverlay] = useState<Record<string, { name: string; avatar: string }>>({})
+  const [analyticsSummary, setAnalyticsSummary] = useState<AnalyticsSummary | null>(null)
+  const [analyticsLoaded, setAnalyticsLoaded] = useState(false)
   const demoMembers = useMemo(
     () => seedMembers.map((m) => (memberOverlay[m.id] ? { ...m, ...memberOverlay[m.id] } : m)),
     [memberOverlay],
@@ -164,6 +175,43 @@ function App() {
       cancelled = true
     }
   }, [])
+  useEffect(() => {
+    void (async () => {
+      let visitorId = ''
+      try {
+        const recorded = sessionStorage.getItem('wc-visit-recorded') === '1'
+        visitorId = localStorage.getItem('wc-visitor-id') || ''
+        if (!visitorId) {
+          visitorId = crypto.randomUUID()
+          localStorage.setItem('wc-visitor-id', visitorId)
+        }
+        if (recorded) return
+        sessionStorage.setItem('wc-visit-recorded', '1')
+      } catch {
+        visitorId = visitorId || crypto.randomUUID()
+      }
+      await recordVisit(visitorId)
+    })()
+  }, [])
+  useEffect(() => {
+    if (!boardUnlocked) return
+    let cancelled = false
+    void (async () => {
+      let key: string
+      try {
+        key = localStorage.getItem('wc-board-key') ?? ''
+      } catch {
+        key = ''
+      }
+      const summary = await fetchAnalyticsSummary(key)
+      if (cancelled) return
+      setAnalyticsSummary(summary)
+      setAnalyticsLoaded(true)
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [boardUnlocked])
   const [activeGroup, setActiveGroup] = useState<GroupCode>('F')
   const [rules, setRules] = useState<Rules>(() => initialLocalState()?.rules ?? defaultRules)
   const [awards, setAwards] = useState<AwardSettings>(() => initialLocalState()?.awards ?? defaultAwards)
@@ -541,6 +589,8 @@ function App() {
         </section>
         {boardUnlocked ? (
           <>
+        <AnalyticsPanel summary={analyticsSummary} loaded={analyticsLoaded} />
+
         <details className="panel slot-panel rescue-slot-panel" id="draft-slot">
           <summary className="rescue-summary">
             <span>
@@ -1133,6 +1183,63 @@ function BoardGatePanel({
       {error ? <p className="room-error">{error}</p> : null}
     </section>
   )
+}
+
+function AnalyticsPanel({ summary, loaded }: { summary: AnalyticsSummary | null; loaded: boolean }) {
+  const daily = summary?.daily ?? []
+  const maxVisits = daily.reduce((max, row) => Math.max(max, row.visits), 0)
+
+  return (
+    <section className="panel analytics-panel" id="analytics-panel">
+      <PanelTitle icon={<Gauge size={18} />} title="アクセス分析" note="合言葉限定" />
+      {!loaded ? (
+        <p className="analytics-note">読み込み中…</p>
+      ) : !summary ? (
+        <p className="analytics-note">アクセス数を取得できませんでした。</p>
+      ) : (
+        <>
+          <div className="analytics-metrics">
+            <article>
+              <span>累計ユニーク</span>
+              <strong>{summary.uniqueVisitors.toLocaleString('ja-JP')}</strong>
+            </article>
+            <article>
+              <span>総アクセス</span>
+              <strong>{summary.totalVisits.toLocaleString('ja-JP')}</strong>
+            </article>
+            <article>
+              <span>今日のユニーク</span>
+              <strong>{summary.today.uniques.toLocaleString('ja-JP')}</strong>
+            </article>
+            <article>
+              <span>今日のアクセス</span>
+              <strong>{summary.today.visits.toLocaleString('ja-JP')}</strong>
+            </article>
+          </div>
+          <div className="analytics-trend" aria-label="直近30日のアクセス推移">
+            {daily.map((row) => {
+              const width = maxVisits > 0 && row.visits > 0 ? Math.max(6, (row.visits / maxVisits) * 100) : 0
+              return (
+                <div key={row.day} className="analytics-bar-row">
+                  <span>{formatAnalyticsDay(row.day)}</span>
+                  <div className="analytics-bar-track">
+                    <i style={{ width: `${width}%` }} />
+                  </div>
+                  <strong>{row.visits.toLocaleString('ja-JP')}</strong>
+                  <em>{row.uniques.toLocaleString('ja-JP')}人</em>
+                </div>
+              )
+            })}
+          </div>
+        </>
+      )}
+    </section>
+  )
+}
+
+function formatAnalyticsDay(day: string) {
+  const [, month, date] = day.split('-')
+  return month && date ? `${Number(month)}/${Number(date)}` : day
 }
 
 function KnockoutBracket() {

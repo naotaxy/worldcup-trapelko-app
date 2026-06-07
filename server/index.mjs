@@ -240,6 +240,127 @@ app.get('/api/bootstrap', (_req, res) => {
   })
 })
 
+// ---- Privacy-friendly access analytics ----
+const analyticsHitSchema = z.object({
+  visitorId: z.string().trim().min(8).max(128),
+})
+const analyticsSummaryQuerySchema = z.object({
+  key: z.string().max(256),
+})
+const analyticsDailySummarySchema = z.object({
+  day: z.string(),
+  visits: z.coerce.number().int().nonnegative(),
+  uniques: z.coerce.number().int().nonnegative(),
+})
+const analyticsSummaryDataSchema = z.object({
+  totalVisits: z.coerce.number().int().nonnegative(),
+  uniqueVisitors: z.coerce.number().int().nonnegative(),
+  today: z.object({
+    visits: z.coerce.number().int().nonnegative(),
+    uniques: z.coerce.number().int().nonnegative(),
+  }),
+  daily: z.array(analyticsDailySummarySchema),
+})
+const ANALYTICS_RATE_WINDOW_MS = 60 * 1000
+const ANALYTICS_RATE_MAX_HITS = 120
+const analyticsRateLimits = new Map()
+
+const sha256Hex = (value) => crypto.createHash('sha256').update(String(value)).digest('hex')
+
+function dayInTokyo() {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date())
+  const value = (type) => parts.find((part) => part.type === type)?.value || '01'
+  return `${value('year')}-${value('month')}-${value('day')}`
+}
+
+function shiftIsoDay(day, offset) {
+  const date = new Date(`${day}T00:00:00.000Z`)
+  date.setUTCDate(date.getUTCDate() + offset)
+  return date.toISOString().slice(0, 10)
+}
+
+function analyticsRateLimited(req, visitorHash) {
+  const forwardedFor = String(req.get('x-forwarded-for') || '').split(',')[0].trim()
+  const address = forwardedFor || req.ip || req.socket?.remoteAddress || visitorHash
+  const key = sha256Hex(address)
+  const now = Date.now()
+  const bucket = analyticsRateLimits.get(key)
+  if (!bucket || now - bucket.startedAt > ANALYTICS_RATE_WINDOW_MS) {
+    analyticsRateLimits.set(key, { startedAt: now, count: 1 })
+    cleanupAnalyticsRateLimits(now)
+    return false
+  }
+  bucket.count += 1
+  return bucket.count > ANALYTICS_RATE_MAX_HITS
+}
+
+function cleanupAnalyticsRateLimits(now) {
+  if (analyticsRateLimits.size < 1000) return
+  for (const [key, bucket] of analyticsRateLimits.entries()) {
+    if (now - bucket.startedAt > ANALYTICS_RATE_WINDOW_MS) analyticsRateLimits.delete(key)
+  }
+}
+
+app.post('/api/analytics/hit', async (req, res) => {
+  const parsed = analyticsHitSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ ok: false })
+    return
+  }
+  if (!supabase) {
+    res.json({ ok: false })
+    return
+  }
+  const visitorHash = sha256Hex(parsed.data.visitorId)
+  if (analyticsRateLimited(req, visitorHash)) {
+    res.json({ ok: true })
+    return
+  }
+  const { error } = await supabase.from('analytics_visits').insert({
+    visitor_hash: visitorHash,
+    day: dayInTokyo(),
+  })
+  if (error) {
+    console.error('[analytics/hit]', error)
+    res.json({ ok: false })
+    return
+  }
+  res.json({ ok: true })
+})
+
+app.get('/api/analytics/summary', async (req, res) => {
+  const parsed = analyticsSummaryQuerySchema.safeParse({ key: typeof req.query.key === 'string' ? req.query.key : '' })
+  const expected = process.env.BOARD_PASSPHRASE || ''
+  if (!parsed.success || !expected || parsed.data.key !== expected) {
+    res.json({ ok: false })
+    return
+  }
+  if (!supabase) {
+    res.json({ ok: false })
+    return
+  }
+  const endDay = dayInTokyo()
+  const startDay = shiftIsoDay(endDay, -29)
+  const { data, error } = await supabase.rpc('analytics_visit_summary', { start_day: startDay, end_day: endDay })
+  if (error) {
+    console.error('[analytics/summary]', error)
+    res.json({ ok: false })
+    return
+  }
+  const summary = analyticsSummaryDataSchema.safeParse(data)
+  if (!summary.success) {
+    console.error('[analytics/summary] invalid response', summary.error)
+    res.json({ ok: false })
+    return
+  }
+  res.json({ ok: true, ...summary.data })
+})
+
 // ---- Public multiplayer draft rooms ----
 // Anyone can create a room (code + optional passphrase), invite up to 8 players
 // who join with a nickname only (no login). Each player secretly picks teams,
@@ -255,7 +376,7 @@ async function allRoomTeamIds() {
   return roomTeamIdsCache.ids
 }
 const genRoomToken = () => crypto.randomBytes(24).toString('hex')
-const hashRoomToken = (value) => crypto.createHash('sha256').update(String(value)).digest('hex')
+const hashRoomToken = (value) => sha256Hex(value)
 const normNickname = (value) => String(value).trim().toLowerCase().replace(/\s+/g, ' ')
 const readRoomToken = (req) => (req.body && req.body.token) || (req.query && req.query.token) || req.get('x-room-token') || ''
 const avatarFromNickname = (value) => String(value).trim().slice(0, 1).toUpperCase() || '?'
