@@ -12,14 +12,8 @@ const projectRoot = path.resolve(__dirname, '..')
 const distDir = path.join(projectRoot, 'dist')
 const app = express()
 const port = Number(process.env.PORT || 8787)
-const draftEventName = process.env.DRAFT_EVENT_NAME || 'エイト・ドラフト'
-const assistantName = process.env.LINE_ASSISTANT_NAME || 'ドラフト進行役'
-const guideMemberId = process.env.GUIDE_MEMBER_ID || 'm-guide'
-const wcGroupName = process.env.LINE_DRAFT_GROUP_NAME || process.env.LINE_WC_GROUP_NAME || ''
-const wcGroupId = process.env.LINE_DRAFT_GROUP_ID || process.env.LINE_WC_GROUP_ID || ''
-const lineBotUserId = process.env.LINE_BOT_USER_ID || ''
-const geminiApiKey = process.env.GEMINI_API_KEY || ''
-const geminiModel = process.env.GEMINI_MODEL || 'gemini-2.5-flash'
+const wcGroupName = process.env.LINE_WC_GROUP_NAME || 'WC☆2026'
+const wcGroupId = process.env.LINE_WC_GROUP_ID || ''
 const knownWcGroupIds = new Set(wcGroupId ? [wcGroupId] : [])
 
 const footballDataToken = process.env.FOOTBALL_DATA_TOKEN || ''
@@ -103,14 +97,15 @@ app.post('/api/line/webhook', express.raw({ type: 'application/json' }), async (
   const payload = JSON.parse(bodyText)
   const events = Array.isArray(payload.events) ? payload.events : []
 
-  // Record any group IDs seen so the target LINE group ID can be captured once,
+  // Record any group IDs seen so the WC☆2026 group ID can be captured once,
   // then read from GET /api/line/captured-groups.
   for (const event of events) {
     if (event?.source?.type === 'group' && event.source.groupId) captureGroup(event.source.groupId)
   }
 
-  // When this app owns the channel webhook, forward events outside the target
-  // draft group to the legacy bot so other groups keep their existing features.
+  // When this app owns the channel webhook, forward NON-WC events to the
+  // existing トラペル子 bot so other groups keep all their features. WC☆2026
+  // events are handled here (W杯特化) and not forwarded (avoids double replies).
   const touchesWcGroup = events.some((e) => {
     const gid = e?.source?.groupId
     return gid && (knownWcGroupIds.has(gid) || (wcGroupId && gid === wcGroupId))
@@ -121,7 +116,7 @@ app.post('/api/line/webhook', express.raw({ type: 'application/json' }), async (
   res.json({ ok: true })
 })
 
-// Preview the draft assistant broadcast text for a match WITHOUT pushing to LINE.
+// Preview the トラペル子 broadcast text for a match WITHOUT pushing to LINE.
 // e.g. GET /api/broadcast-preview?matchId=F-1&home=2&away=1
 app.get('/api/broadcast-preview', async (req, res) => {
   const matchId = String(req.query.matchId || '')
@@ -207,7 +202,7 @@ app.post('/api/sync-results', async (req, res) => {
   res.json(out)
 })
 
-// Read captured group IDs for one-time target groupId discovery.
+// Read captured group IDs (for one-time WC☆2026 groupId discovery).
 app.get('/api/line/captured-groups', (req, res) => {
   const key = process.env.LINE_CAPTURE_KEY
   if (key && req.query.key !== key) {
@@ -222,29 +217,25 @@ app.use(express.json())
 app.get('/api/health', (_req, res) => {
   res.json({
     ok: true,
-    service: 'eight-draft',
-    bot: assistantName,
+    service: 'worldcup-trapelko-app',
+    bot: '秘書トラペル子',
     lineGroup: wcGroupName,
     lineGroupLocked: Boolean(wcGroupId),
     supabase: Boolean(supabase),
     liff: Boolean(process.env.LINE_LIFF_ID),
-    mentionOnly: true,
-    gemini: Boolean(geminiApiKey),
   })
 })
 
 app.get('/api/bootstrap', (_req, res) => {
   res.json({
-    tournament: draftEventName,
+    tournament: 'FIFA World Cup 2026',
     liffId: process.env.LINE_LIFF_ID || null,
     supabaseReady: Boolean(supabase),
-    notificationRole: assistantName,
+    notificationRole: '秘書トラペル子',
     lineGroupName: wcGroupName,
     lineGroupLocked: Boolean(wcGroupId),
-    wcOnlyMode: Boolean(wcGroupId || wcGroupName),
+    wcOnlyMode: true,
     disabledInWcGroup: ['ウイコレ'],
-    lineReplyMode: 'mention-only',
-    geminiReady: Boolean(geminiApiKey),
     contentPolicy: 'Store article URLs and short summaries. Do not republish article bodies or video files.',
   })
 })
@@ -389,7 +380,7 @@ app.post('/api/results', async (req, res) => {
   if (notifyTarget) {
     const text =
       (await buildResultBroadcast(row).catch(() => null)) ||
-      `${assistantName}です。${draftEventName}の結果を更新しました。\n${result.matchId}: ${result.homeScore}-${result.awayScore}\n順位表と参加者ランキングも再計算済みです。\n${publicAppUrl()}`
+      `秘書トラペル子です。WC☆2026の結果を更新しました。\n${result.matchId}: ${result.homeScore}-${result.awayScore}\n順位表と参加者ランキングも再計算済みです。\n${publicAppUrl()}`
     await pushLine(notifyTarget, [{ type: 'text', text }])
   }
 
@@ -409,13 +400,13 @@ app.use((err, _req, res, _next) => {
 })
 
 app.listen(port, () => {
-  console.log(`[eight-draft] listening on ${port}`)
+  console.log(`[worldcup-trapelko] listening on ${port}`)
 })
 
 // Auto-pull results while the instance is awake (keep it warm with UptimeRobot).
 // ESPN (scores + events) needs no key, so this runs whenever Supabase is set.
 if (supabase) {
-  console.log(`[eight-draft] auto-sync (ESPN + football-data fallback) every ${Math.round(syncIntervalMs / 1000)}s`)
+  console.log(`[worldcup-trapelko] auto-sync (ESPN + football-data fallback) every ${Math.round(syncIntervalMs / 1000)}s`)
   setInterval(() => {
     runAutoSync({ notify: true })
       .then((out) => {
@@ -428,10 +419,8 @@ if (supabase) {
 async function handleLineEvent(event) {
   if (event.type !== 'message' || event.message?.type !== 'text') return
   const inWcGroup = await isWorldCupLineGroup(event)
-  if (!inWcGroup) return
-  if (!isSelfMentioned(event)) return
-  const text = stripLineMention(String(event.message.text || ''), event.message.mention)
-  const reply = await buildMentionReply(text)
+  if (!inWcGroup) return // only the WC☆2026 group is handled here (W杯特化)
+  const reply = await buildWorldCupReply(String(event.message.text || ''))
   if (reply) await replyLine(event.replyToken, [{ type: 'text', text: reply }])
 }
 
@@ -450,263 +439,52 @@ async function isWorldCupLineGroup(event) {
 }
 
 function isWorldCupText(text) {
-  return /(WC|W杯|ワールドカップ|world\s*cup|順位|結果|試合|集計|ドラフト|予選|突破|グループ|ハイライト|ニュース|予想|平均|中央値)/i.test(text)
+  return /(WC|W杯|ワールドカップ|world\s*cup|順位|結果|試合|集計|ドラフト|予選|突破|グループ|ハイライト|ニュース|予想|平均|中央値|トラペル)/i.test(text)
 }
 
-function isSelfMentioned(event) {
-  const mentionees = event.message?.mention?.mentionees
-  if (!Array.isArray(mentionees)) return false
-  return mentionees.some((mentionee) => mentionee?.isSelf === true || (lineBotUserId && mentionee?.userId === lineBotUserId))
-}
-
-function stripLineMention(text, mention) {
-  let cleaned = text
-  const mentionees = Array.isArray(mention?.mentionees) ? [...mention.mentionees] : []
-  mentionees
-    .filter((mentionee) => Number.isInteger(mentionee?.index) && Number.isInteger(mentionee?.length))
-    .sort((a, b) => b.index - a.index)
-    .forEach((mentionee) => {
-      cleaned = cleaned.slice(0, mentionee.index) + cleaned.slice(mentionee.index + mentionee.length)
-    })
-  return cleaned.replace(/@[^\s　]+/g, '').replace(/\s+/g, ' ').trim()
-}
-
-// Draft assistant replies for the target LINE group.
+// W杯特化のトラペル子応答。機能のヘルプ・説明が全部できる。
 async function buildWorldCupReply(text) {
   const t = text || ''
   if (/(ヘルプ|help|使い方|機能|何ができ|コマンド|メニュー)/i.test(t)) return helpReply()
   if (/(順位|ランキング|何位|首位|トップ|集計)/.test(t)) return await rankingReply()
   if (/(結果|速報|スコア|試合)/.test(t)) return await rankingReply()
   if (/(予想|平均|中央値|シミュ)/.test(t)) {
-    return `${assistantName}です。${draftEventName}の最終予想グラフ(平均/中央値/レンジ)はこちら。\n${publicAppUrl()}#projection-panel`
+    return `秘書トラペル子です。WC☆2026の最終予想グラフ(平均/中央値/レンジ)はこちら。\n${publicAppUrl()}#projection-panel`
   }
   if (/(ルール|配点|点数|得点ルール)/.test(t)) return rulesReply()
   if (/(選手|代表|メンバー|スタメン|写真|身長|年齢)/.test(t)) {
-    return `${assistantName}です。代表選手の写真・年齢・身長は、アプリの順位で国名をタップすると見られます。\n${publicAppUrl()}`
+    return `秘書トラペル子です。代表選手の写真・年齢・身長は、アプリの順位で国名をタップすると見られます。\n${publicAppUrl()}`
   }
   if (isWorldCupText(t)) {
-    return `${assistantName}です。${draftEventName}のドラフト/試合/順位はこちら。\n${publicAppUrl()}\n「ヘルプ」で使い方、「順位」で今のランキングを返します。`
+    return `秘書トラペル子です。WC☆2026のドラフト/試合/順位はこちら。\n${publicAppUrl()}\n「ヘルプ」で使い方、「順位」で今のランキングを返します。`
   }
   return null
 }
 
-async function buildMentionReply(text) {
-  const t = text || ''
-  if (!t) return `${assistantName}です。聞きたいことをメンション付きで送ってください。\n「順位」「ルール」「予想」はすぐ返せます。`
-  if (/(ヘルプ|help|使い方|機能|何ができ|コマンド|メニュー)/i.test(t)) return helpReply()
-  if (/(順位|ランキング|何位|首位|トップ|集計|結果|速報|スコア)/.test(t)) return await rankingReply()
-  if (/(予想|平均|中央値|シミュ)/.test(t)) {
-    return `${assistantName}です。${draftEventName}の最終予想グラフ(平均/中央値/レンジ)はこちら。\n${publicAppUrl()}#projection-panel`
-  }
-  if (/(ルール|配点|点数|得点ルール)/.test(t)) return rulesReply()
-
-  const geminiReply = await buildGeminiWorldCupReply(t).catch((err) => {
-    console.error('[gemini]', err)
-    return null
-  })
-  if (geminiReply) return geminiReply
-
-  return (
-    (await buildWorldCupReply(t)) ||
-    `${assistantName}です。いま回答用AIが使えないため、アプリのW杯データを見てください。\n${publicAppUrl()}`
-  )
-}
-
-async function buildGeminiWorldCupReply(question) {
-  if (!geminiApiKey) return null
-  const context = await buildWorldCupKnowledgeContext(question)
-  const body = {
-    systemInstruction: {
-      parts: [
-        {
-          text: [
-            `あなたはLINEグループ「${wcGroupName || '対象グループ'}」で${draftEventName}を進行する${assistantName}です。`,
-            '日本語で、友人グループ向けに短く自然に返してください。',
-            '提供されたW杯アプリ内データだけを根拠にし、外部の最新情報を断定しないでください。',
-            '分からないことは「アプリ内データでは未確認」と明言してください。',
-            'ウイコレや対象外ゲームの話題には乗らず、このW杯ドラフトの話題へ戻してください。',
-            'LINE本文なので見出しやMarkdownを使いすぎず、最大6行程度にしてください。',
-          ].join('\n'),
-        },
-      ],
-    },
-    contents: [
-      {
-        role: 'user',
-        parts: [{ text: `質問: ${question}\n\n参照データ:\n${context}` }],
-      },
-    ],
-    generationConfig: {
-      temperature: 0.35,
-      maxOutputTokens: 512,
-    },
-  }
-
-  const response = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(geminiModel)}:generateContent?key=${encodeURIComponent(
-      geminiApiKey,
-    )}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(10000),
-    },
-  )
-  if (!response.ok) throw new Error(`Gemini ${response.status}`)
-  const payload = await response.json()
-  const text = (payload.candidates?.[0]?.content?.parts || [])
-    .map((part) => part?.text || '')
-    .join('')
-    .trim()
-  return normalizeLineReply(text)
-}
-
-async function buildWorldCupKnowledgeContext(question) {
-  const computed = await computeStandingsFromDb().catch(() => null)
-  const data = computed?.data || (await import('../src/data/worldCup2026.ts'))
-  const members = computed?.members?.length ? computed.members : data.demoMembers
-  const selections = computed?.selections?.length ? computed.selections : data.demoSelections
-  const teamById = new Map(data.teams.map((team) => [team.id, team]))
-  const nameJa = (id) => data.teamNamesJa[id] || teamById.get(id)?.name || id
-  const ownersByTeam = new Map()
-  for (const selection of selections || []) {
-    const owner = members.find((member) => member.id === selection.memberId)?.name || selection.memberId
-    const owners = ownersByTeam.get(selection.teamId) || []
-    owners.push(owner)
-    ownersByTeam.set(selection.teamId, owners)
-  }
-
-  const groupLines = data.groups.map((group) => `${group.code}組: ${group.teams.map((team) => nameJa(team.id)).join('、')}`)
-  const ownerLines = data.teams
-    .map((team) => {
-      const owners = ownersByTeam.get(team.id)
-      return owners?.length ? `${nameJa(team.id)}=${owners.join('・')}` : null
-    })
-    .filter(Boolean)
-    .slice(0, 80)
-  const rankingLines = computed?.memberStandings?.length
-    ? computed.memberStandings.map((row, index) => `${index + 1}位 ${row.member.name} ${row.total}pt`)
-    : []
-  const matchLines = data.fixtures
-    .slice(0, 24)
-    .map((match) => {
-      const result =
-        match.result?.home !== null && match.result?.away !== null ? ` ${match.result.home}-${match.result.away}` : ` ${match.date}`
-      return `${match.group}組 ${nameJa(match.homeTeamId)} vs ${nameJa(match.awayTeamId)}${result}`
-    })
-  const rules = computed?.rules || data.defaultRules
-  const teamDetail = await buildTeamDetailsContext(question, data, teamById, ownersByTeam)
-
-  return [
-    `大会名: ${draftEventName}`,
-    `アプリURL: ${publicAppUrl()}`,
-    `返信条件: ${assistantName}はこのLINEグループではメンション時だけ返答する。`,
-    `配点: 勝${rules.win} / PK勝${rules.penaltyWin} / 分${rules.draw} / 3点差+${rules.goalMargin3Bonus} / HT+${rules.hatTrickBonus} / 決勝T+${rules.knockoutQualifiedBonus} / 優勝+${rules.championBonus} / 日本${rules.japanMultiplier}倍`,
-    `現在ランキング:\n${rankingLines.length ? rankingLines.join('\n') : '未集計またはSupabase未接続'}`,
-    `グループ:\n${groupLines.join('\n')}`,
-    `ドラフト保有:\n${ownerLines.join('\n') || '未登録'}`,
-    `直近表示対象の試合:\n${matchLines.join('\n')}`,
-    teamDetail,
-  ]
-    .filter(Boolean)
-    .join('\n\n')
-}
-
-async function buildTeamDetailsContext(question, data, teamById, ownersByTeam) {
-  const teamIds = extractMentionedTeamIds(question, data)
-  if (teamIds.length === 0) return ''
-  const [{ pdfCountryInfo }, { squads }, { playerInfoJa }] = await Promise.all([
-    import('../src/data/wcPdf.ts').catch(() => ({ pdfCountryInfo: {} })),
-    import('../src/data/squads.ts').catch(() => ({ squads: {} })),
-    import('../src/data/playerInfoJa.ts').catch(() => ({ playerInfoJa: {} })),
-  ])
-  const nameJa = (id) => data.teamNamesJa[id] || teamById.get(id)?.name || id
-  return teamIds
-    .slice(0, 4)
-    .map((teamId) => {
-      const team = teamById.get(teamId)
-      const country = pdfCountryInfo[teamId]
-      const players = (squads[teamId] || [])
-        .slice(0, 14)
-        .map((player) => {
-          const info = playerInfoJa[player.name]
-          return `${info?.ja || player.name}(${player.position}${player.club ? `/${player.club}` : ''})`
-        })
-      const owners = ownersByTeam.get(teamId)?.join('・') || '保有者なし'
-      const summary = truncateText(country?.summary || '', 260)
-      return [
-        `${nameJa(teamId)}(${team?.shortName || teamId})`,
-        `保有: ${owners}`,
-        `組: ${team?.group || '-'} / 連盟: ${team?.confederation || '-'} / シード目安: ${team?.seed || '-'}`,
-        country?.coach ? `監督: ${country.coach}` : '',
-        summary ? `概要: ${summary}` : '',
-        players.length ? `登録メンバー例: ${players.join('、')}` : '',
-      ]
-        .filter(Boolean)
-        .join('\n')
-    })
-    .join('\n\n')
-}
-
-function extractMentionedTeamIds(question, data) {
-  const normalized = normalizeForMatch(question)
-  const hits = []
-  for (const team of data.teams) {
-    const names = [team.id, team.name, team.shortName, data.teamNamesJa[team.id]].filter(Boolean)
-    if (names.some((name) => normalized.includes(normalizeForMatch(name)))) hits.push(team.id)
-  }
-  return [...new Set(hits)]
-}
-
-function normalizeForMatch(value) {
-  return String(value || '')
-    .toLowerCase()
-    .normalize('NFKC')
-    .replace(/\s+/g, '')
-}
-
-function normalizeLineReply(text) {
-  if (!text) return null
-  const cleaned = text
-    .replace(/\*\*/g, '')
-    .split('\n')
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .slice(0, 8)
-    .join('\n')
-  return truncateText(cleaned, 1800)
-}
-
-function truncateText(text, maxLength) {
-  const value = String(text || '').trim()
-  if (value.length <= maxLength) return value
-  return `${value.slice(0, maxLength - 1)}…`
-}
-
 function helpReply() {
   return [
-    `${assistantName}です。${draftEventName}でできること:`,
+    '秘書トラペル子です。WC☆2026でできること:',
     '・「順位」… 参加者ランキングと各国ポイント',
     '・「結果」… 試合結果(得点者/カード/HT/OG)は自動取得',
     '・「予想」… 最終予想グラフ(平均/中央値)',
     '・「ルール」… 配点ルール',
     '・「選手」… 代表選手の写真/年齢/身長(国名タップ)',
-    '試合前は見どころを共有し、結果が出たら速報します。',
+    '試合前は私が見どころを実況、結果が出たら速報します。',
+    '私も参加者の一人として戦ってます！',
     publicAppUrl(),
   ].join('\n')
 }
 
 async function rankingReply() {
   const computed = await computeStandingsFromDb().catch(() => null)
-  if (!computed) return `${assistantName}です。${draftEventName}の順位はこちら。\n${publicAppUrl()}`
+  if (!computed) return `秘書トラペル子です。WC☆2026の順位はこちら。\n${publicAppUrl()}`
   const ranking = computed.memberStandings.map((row, index) => `${index + 1}位 ${row.member.name} ${row.total}pt`).join('\n')
-  return [`${assistantName}です。${draftEventName} 現在の参加者ランキング`, ranking, publicAppUrl()].join('\n')
+  return ['秘書トラペル子です。WC☆2026 現在の参加者ランキング', ranking, publicAppUrl()].join('\n')
 }
 
 function rulesReply() {
   return [
-    `${assistantName}です。${draftEventName}の配点:`,
+    '秘書トラペル子です。WC☆2026の配点:',
     '勝5 / PK勝3 / 分1 / 3点差+3 / ハットトリック+5',
     '決勝T進出+5 / 3位+5 / 準優勝+10 / 優勝+15 / 全敗+10',
     'MVP+10 / 得点王+10 / 黄4枚-2 / 赤-2 / OG-2 / 日本2倍',
@@ -807,7 +585,7 @@ const EVENT_KEYS = [
 
 async function espnGet(pathname) {
   try {
-    const res = await fetch(`${ESPN_BASE}${pathname}`, { headers: { 'user-agent': 'eight-draft/1.0' } })
+    const res = await fetch(`${ESPN_BASE}${pathname}`, { headers: { 'user-agent': 'wc2026-trapelko/1.0' } })
     if (!res.ok) return null
     return await res.json()
   } catch {
@@ -957,9 +735,7 @@ async function syncFromEspn({ notify = true, full = false } = {}) {
           }
         }
       } else {
-        const text = await buildRankingBroadcast(`${assistantName}です。${draftEventName} 結果まとめ更新（${changed.length}試合）`).catch(
-          () => null,
-        )
+        const text = await buildRankingBroadcast(`秘書トラペル子です。WC☆2026 結果まとめ更新（${changed.length}試合）`).catch(() => null)
         if (text) {
           await pushLine(target, [{ type: 'text', text }])
           notified = 1
@@ -971,7 +747,7 @@ async function syncFromEspn({ notify = true, full = false } = {}) {
 }
 
 // ESPN first (scores + events), football-data as score-only fallback, then
-// pre-match previews for matches kicking off soon.
+// trapelko pre-match previews for matches kicking off soon.
 async function runAutoSync({ notify = true } = {}) {
   const espn = await syncFromEspn({ notify }).catch((err) => ({ ok: false, error: err?.message }))
   const footballData = footballDataToken
@@ -984,7 +760,7 @@ async function runAutoSync({ notify = true } = {}) {
 
 // Fetch FIFA World Cup results from football-data.org, map each finished group
 // match to our fixture (by group + unordered team pair), upsert to Supabase, and
-// have the draft assistant broadcast newly-changed results.
+// have トラペル子 broadcast newly-changed results.
 async function syncResultsFromFootballData({ notify = true, fallbackOnly = false } = {}) {
   if (!footballDataToken) return { ok: false, error: 'FOOTBALL_DATA_TOKEN not set' }
   if (!supabase) return { ok: false, error: 'supabase not configured' }
@@ -1054,9 +830,7 @@ async function syncResultsFromFootballData({ notify = true, fallbackOnly = false
           }
         }
       } else {
-        const text = await buildRankingBroadcast(`${assistantName}です。${draftEventName} 結果まとめ更新（${changed.length}試合）`).catch(
-          () => null,
-        )
+        const text = await buildRankingBroadcast(`秘書トラペル子です。WC☆2026 結果まとめ更新（${changed.length}試合）`).catch(() => null)
         if (text) {
           await pushLine(target, [{ type: 'text', text }])
           notified = 1
@@ -1116,10 +890,10 @@ async function computeStandingsFromDb() {
   )
   const teamStandings = logic.calculateTeamStandings(data.groups, fixtures, rules, awards)
   const memberStandings = logic.calculateMemberStandings(members, selections, teamStandings)
-  return { data, teamStandings, memberStandings, selections, members, rules, awards }
+  return { data, teamStandings, memberStandings, selections, members }
 }
 
-// Build the draft assistant live commentary text: who won, the owners, and the
+// Build the トラペル子 "live commentary" text: who won, the owners, and the
 // current member ranking with points.
 async function buildResultBroadcast(savedRow) {
   const computed = await computeStandingsFromDb()
@@ -1164,7 +938,7 @@ async function buildResultBroadcast(savedRow) {
   const ranking = memberStandings.map((row, index) => `${index + 1}位 ${row.member.name} ${row.total}pt`).join('\n')
 
   return [
-    `${assistantName}です。${draftEventName} 結果速報`,
+    '秘書トラペル子です。WC☆2026 結果速報',
     `[${fixture.group}組] ${homeName} ${hs}-${as} ${awayName}`,
     resultLine,
     ...(topics.length ? [`トピック: ${topics.join(' / ')}`] : []),
@@ -1175,8 +949,8 @@ async function buildResultBroadcast(savedRow) {
   ].join('\n')
 }
 
-// Draft assistant match preview before kickoff: team strength, key players,
-// talking points, and owners.
+// トラペル子の試合前プレビュー: 保有国の試合キックオフ前に、国の強さ・主要選手・
+// 見どころ・保有者を紹介する。秘書トラペル子は参加者の一人として一言添える。
 const seedStrengthJa = { 1: 'グループ最有力', 2: '有力', 3: '伏兵', 4: 'チャレンジャー' }
 const confederationShortJa = { UEFA: '欧州', CONMEBOL: '南米', CAF: 'アフリカ', AFC: 'アジア', Concacaf: '北中米', OFC: 'オセアニア' }
 
@@ -1222,20 +996,21 @@ async function buildMatchPreview(fixtureId) {
   if (seedGap >= 2) points.push('格上対格下の一戦')
   if (fixture.homeTeamId === 'japan' || fixture.awayTeamId === 'japan') points.push('日本は得点が2倍')
 
-  const guideTeams = selections.filter((s) => s.memberId === guideMemberId).map((s) => s.teamId)
-  let guideVoice = ''
-  if (guideTeams.includes(fixture.homeTeamId) || guideTeams.includes(fixture.awayTeamId)) {
-    const mine = guideTeams.includes(fixture.homeTeamId) ? nameJa(fixture.homeTeamId) : nameJa(fixture.awayTeamId)
-    guideVoice = `ガイド枠の${mine}にも注目です。`
+  // 秘書トラペル子は参加者なので自分の国なら一言。
+  const trapelkoTeams = selections.filter((s) => s.memberId === 'm-trapelko').map((s) => s.teamId)
+  let trapelkoVoice = ''
+  if (trapelkoTeams.includes(fixture.homeTeamId) || trapelkoTeams.includes(fixture.awayTeamId)) {
+    const mine = trapelkoTeams.includes(fixture.homeTeamId) ? nameJa(fixture.homeTeamId) : nameJa(fixture.awayTeamId)
+    trapelkoVoice = `私（トラペル子）の${mine}、たのむよ〜！`
   }
 
   return [
-    `${assistantName}です。まもなくキックオフ。${draftEventName}`,
+    '秘書トラペル子です。まもなくキックオフ！WC☆2026',
     `[${fixture.group}組] ${nameJa(fixture.homeTeamId)} vs ${nameJa(fixture.awayTeamId)}`,
     line(fixture.homeTeamId),
     line(fixture.awayTeamId),
     points.length ? `見どころ: ${points.join(' / ')}` : '見どころ: 勝てば勝点5、3点差なら+3！',
-    ...(guideVoice ? [guideVoice] : []),
+    ...(trapelkoVoice ? [trapelkoVoice] : []),
     publicAppUrl(),
   ].join('\n')
 }

@@ -1,11 +1,11 @@
-# Eight Draft Architecture
+# World Cup Draft Architecture
 
 ## Current MVP
 
 - Frontend: Vite, React, Three.js, lucide-react.
 - API: Express on Render. It serves the built frontend and exposes LINE webhook, rules, and result endpoints.
-- Data: Static 2026 tournament seed and squad data in the frontend now. Production state should move to Supabase tables in `supabase/schema.sql`.
-- Bot role: ドラフト進行役 posts LINE group links and result notifications.
+- Data: Static FIFA 2026 seed and squad data in the frontend now. Production state should move to Supabase tables in `supabase/schema.sql`.
+- Bot role: 秘書トラペル子 posts LINE group links and result notifications.
 
 ## Service Split
 
@@ -15,10 +15,10 @@
 | Database | Supabase Postgres | Teams, squad players, fixtures, selections, rules, results, content links. |
 | Login | LINE LIFF / LINE Login | Bind `line_user_id`, display name, picture URL to `members`. |
 | Bot | LINE Messaging API | Webhook reply and push notifications to LINE group. |
-| Legacy memory | Firebase optional | Reuse existing `config/memberProfiles/{userId}` when a private bot integration is enabled. |
+| Legacy memory | Firebase optional | Reuse existing `config/memberProfiles/{userId}` from 秘書トラペル子. |
 | Content discovery | Yahoo Developer optional | Store URLs and summaries only. Do not republish full article bodies. |
 
-## Legacy Bot Reuse Points
+## Trapelko Reuse Points
 
 Use these existing modules from `/Users/naotay/soccer-roulette` as references when merging:
 
@@ -76,7 +76,7 @@ The frontend score engine is pure TypeScript, so changing rules only requires re
 - Use official/highlight video links and article URLs.
 - Store only title, URL, source, kind, and short original summary.
 - Do not copy full news articles into the app or LINE messages.
-- For highlights, link to official or rights-holder pages or YouTube search results unless a licensed API confirms the exact video URL.
+- For highlights, link to FIFA/rights-holder pages or YouTube search results unless a licensed API confirms the exact video URL.
 
 ## Official Seed Sources
 
