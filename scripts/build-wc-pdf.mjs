@@ -31,6 +31,7 @@ const lines = readFileSync(srcPath, 'utf8').split('\n').map((l) => l.replace(/\s
 const POS = [
   { re: /^(ゴールキーパー|ＧＫ|GK)\s*[：:]/, pos: 'GK' },
   { re: /^(ディフェンダー|ＤＦ|DF)\s*[：:]/, pos: 'DF' },
+  { re: /^ミッドフィールダーとフォワード\s*[：:]/, pos: 'MF' },
   { re: /^(ミッドフィールダー|ＭＦ|MF)\s*[：:]/, pos: 'MF' },
   { re: /^(フォワード|ＦＷ|FW)\s*[：:]/, pos: 'FW' },
 ]
@@ -38,6 +39,22 @@ const isCoach = (l) => /^(監督|コーチ)\s*[：:]/.test(l)
 const isCaption = (l) => /ゲッティ|イメージ|ロイター|通信|（写真|画像提供/.test(l)
 const isGroup = (l) => /^グループ/.test(l)
 const posOf = (l) => POS.find((p) => p.re.test(l))
+const narrativeLeakRe = /代表|メンバー|ワールドカップ|開催|選出|監督|チーム|グループ|写真|Getty|AFP|ゲッティ|ロイター|通信|ディフェンダー|ミッドフィールダー|フォワード|ゴールキーパー|ストライカー/
+
+function cleanClub(value) {
+  if (!value) return undefined
+  const club = value.replace(/｡.*/, '').trim()
+  if (!club || narrativeLeakRe.test(club) || /の.+が$/.test(club)) return undefined
+  return club
+}
+
+function shouldSkipPlayerEntry(name, club) {
+  if (!name) return true
+  if (narrativeLeakRe.test(name)) return true
+  if (/^[。、､，,.]+$/.test(name)) return true
+  if ((club || '').length > 0 && narrativeLeakRe.test(club)) return true
+  return false
+}
 
 const info = {} // id -> { summary, coach }
 const squads = {} // id -> [{name,pos,club}]
@@ -72,7 +89,8 @@ function flushPos() {
       }
     }
     name = name.replace(/[（）()]/g, '').trim()
-    if (name) (squads[team] = squads[team] || []).push({ name, pos: curPos, club: club || undefined })
+    club = cleanClub(club)
+    if (!shouldSkipPlayerEntry(name, club)) (squads[team] = squads[team] || []).push({ name, pos: curPos, club })
   }
   curPos = null
   posBuf = []

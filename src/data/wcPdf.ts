@@ -845,11 +845,6 @@ export const pdfSquads: Record<string, PdfPlayer[]> = {
     },
     {
       "name": "プロミス・デイビッド",
-      "pos": "FW",
-      "club": "ウニオン SGバイエルン・ミュンヘンのディフェンダー"
-    },
-    {
-      "name": "アルフォンソ・デイヴィスがカナダ代表とし",
       "pos": "FW"
     }
   ],
@@ -1899,11 +1894,6 @@ export const pdfSquads: Record<string, PdfPlayer[]> = {
     },
     {
       "name": "ハジ・ライト",
-      "pos": "FW",
-      "club": "コベントリーボーンマスのタイラー・アダムスが"
-    },
-    {
-      "name": "自国開催のワールドカップに向けたアメリカ代表メ",
       "pos": "FW"
     }
   ],
@@ -3139,66 +3129,71 @@ export const pdfSquads: Record<string, PdfPlayer[]> = {
     {
       "name": "エリック・スミス",
       "pos": "DF",
-      "club": "ザンクトパウリミッドフィールダーとフォワード：タハ・アリ マルメ FF"
+      "club": "ザンクトパウリ"
+    },
+    {
+      "name": "タハ・アリ",
+      "pos": "MF",
+      "club": "マルメ FF"
     },
     {
       "name": "ヤシン・アヤリ",
-      "pos": "DF",
+      "pos": "MF",
       "club": "ブライトン"
     },
     {
       "name": "ルーカス・ベルグヴァル",
-      "pos": "DF",
+      "pos": "MF",
       "club": "トッテナム"
     },
     {
       "name": "アンソニー・エランガ",
-      "pos": "DF",
+      "pos": "MF",
       "club": "ニューカッスル"
     },
     {
       "name": "ヴィクトル・ギョケレス",
-      "pos": "DF",
+      "pos": "MF",
       "club": "アーセナル"
     },
     {
       "name": "イェスパー・カールストローム",
-      "pos": "DF",
+      "pos": "MF",
       "club": "ウディネーゼ"
     },
     {
       "name": "グスタフ・ニルソン",
-      "pos": "DF",
+      "pos": "MF",
       "club": "クラブ・ブルージュ"
     },
     {
       "name": "ベンジャミン・ニグレン",
-      "pos": "DF",
+      "pos": "MF",
       "club": "セルティック"
     },
     {
       "name": "マティアス・スヴァンベルク",
-      "pos": "DF",
+      "pos": "MF",
       "club": "VfL ヴォルフスブルク"
     },
     {
       "name": "ベスフォルト・ゼネリ",
-      "pos": "DF",
+      "pos": "MF",
       "club": "ウニオン・サン＝ジロワーズ"
     },
     {
       "name": "アレクサンダー・イサク",
-      "pos": "DF",
+      "pos": "MF",
       "club": "リヴァプール"
     },
     {
       "name": "アレクサンダー・ベルンハルトソン",
-      "pos": "DF",
+      "pos": "MF",
       "club": "ホルシュタイン・キール"
     },
     {
       "name": "ケン・セマ",
-      "pos": "DF",
+      "pos": "MF",
       "club": "パフォス"
     }
   ],
@@ -3985,11 +3980,6 @@ export const pdfSquads: Record<string, PdfPlayer[]> = {
       "name": "ボルハ・イグレシアス",
       "pos": "FW",
       "club": "セルタ・ビーゴ"
-    },
-    {
-      "name": "スペイン代表メンバー入りを果たした",
-      "pos": "FW",
-      "club": "AFP/Getty ｡"
     }
   ],
   "cabo-verde": [

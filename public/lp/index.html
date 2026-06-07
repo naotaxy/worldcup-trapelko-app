@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#071633" />
+    <meta
+      name="description"
+      content="W杯2026を友だちと楽しむためのドラフト集計アプリ。国を取り合い、試合結果に合わせてポイントと順位が動きます。"
+    />
+    <meta property="og:title" content="W杯2026 ドラフト集計アプリ" />
+    <meta property="og:description" content="国を取り合って、試合結果でポイントと順位が動く。ルーム作成、非公開ピック、被りルーレット、最終予想グラフつき。" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://worldcup-trapelko-app.onrender.com/lp/" />
+    <title>W杯2026 ドラフト集計アプリ</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: #eef5ff;
+        background: #071633;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html {
+        scroll-behavior: smooth;
+      }
+
+      body {
+        min-width: 320px;
+        min-height: 100svh;
+        margin: 0;
+        background:
+          radial-gradient(circle at 18% 12%, rgba(255, 210, 72, 0.26), transparent 28%),
+          radial-gradient(circle at 88% 20%, rgba(85, 142, 255, 0.28), transparent 30%),
+          radial-gradient(circle at 50% 84%, rgba(58, 198, 169, 0.18), transparent 34%),
+          linear-gradient(145deg, #071633, #0b2b66 48%, #071735);
+      }
+
+      body::before,
+      body::after {
+        content: "";
+        position: fixed;
+        inset: -20%;
+        z-index: -1;
+        pointer-events: none;
+      }
+
+      body::before {
+        opacity: 0.42;
+        background: repeating-radial-gradient(circle at 0 0, transparent 0 54px, rgba(255, 216, 80, 0.42) 55px 57px, transparent 58px 116px);
+        animation: drift 34s linear infinite;
+      }
+
+      body::after {
+        opacity: 0.36;
+        background: conic-gradient(from 115deg at 82% 82%, transparent 0 20deg, rgba(255, 234, 160, 0.38) 21deg 26deg, transparent 27deg 56deg);
+        animation: sweep 44s linear infinite;
+      }
+
+      @keyframes drift {
+        to {
+          transform: translate3d(116px, 116px, 0);
+        }
+      }
+
+      @keyframes sweep {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+
+      a {
+        color: inherit;
+      }
+
+      .page {
+        width: min(1120px, 100%);
+        margin: 0 auto;
+        padding: 20px 18px 42px;
+      }
+
+      .top {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 6px 0 22px;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 900;
+        letter-spacing: 0;
+      }
+
+      .brand-mark {
+        display: grid;
+        width: 38px;
+        height: 38px;
+        place-items: center;
+        border: 1px solid rgba(255, 226, 130, 0.45);
+        border-radius: 10px;
+        background: rgba(8, 22, 52, 0.42);
+        color: #ffe29a;
+      }
+
+      .top a {
+        padding: 9px 12px;
+        border: 1px solid rgba(214, 236, 255, 0.18);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        font-size: 13px;
+        font-weight: 800;
+        text-decoration: none;
+      }
+
+      .hero {
+        display: grid;
+        grid-template-columns: minmax(0, 1.02fr) minmax(320px, 0.98fr);
+        gap: 18px;
+        align-items: stretch;
+      }
+
+      .hero-copy,
+      .phone,
+      .section,
+      .share-box {
+        border: 1px solid rgba(214, 236, 255, 0.18);
+        border-radius: 22px;
+        background:
+          linear-gradient(145deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.035)),
+          rgba(8, 22, 52, 0.32);
+        box-shadow:
+          0 22px 64px rgba(2, 8, 24, 0.34),
+          inset 0 1px 0 rgba(255, 255, 255, 0.18);
+        backdrop-filter: blur(20px) saturate(150%);
+      }
+
+      .hero-copy {
+        padding: clamp(22px, 4vw, 42px);
+      }
+
+      .eyebrow {
+        display: inline-flex;
+        margin: 0 0 14px;
+        padding: 6px 10px;
+        border-radius: 999px;
+        background: rgba(255, 216, 80, 0.15);
+        color: #ffe49c;
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      h1,
+      h2,
+      h3,
+      p {
+        margin: 0;
+      }
+
+      h1 {
+        max-width: 11em;
+        color: #fff7dd;
+        font-size: clamp(34px, 7vw, 68px);
+        line-height: 0.98;
+        letter-spacing: 0;
+      }
+
+      .lead {
+        max-width: 42em;
+        margin-top: 18px;
+        color: rgba(225, 234, 255, 0.86);
+        font-size: 16px;
+        line-height: 1.75;
+      }
+
+      .actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 24px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 46px;
+        padding: 0 16px;
+        border: 1px solid rgba(255, 232, 150, 0.44);
+        border-radius: 12px;
+        background: linear-gradient(160deg, #ffe89a, #ffc23d);
+        color: #10224c;
+        font-weight: 900;
+        text-decoration: none;
+      }
+
+      .button.secondary {
+        border-color: rgba(214, 236, 255, 0.18);
+        background: rgba(255, 255, 255, 0.08);
+        color: #eef5ff;
+      }
+
+      .phone {
+        min-height: 530px;
+        padding: 18px;
+        overflow: hidden;
+      }
+
+      .screen {
+        display: grid;
+        gap: 10px;
+        height: 100%;
+        min-height: 494px;
+        padding: 14px;
+        border: 1px solid rgba(214, 236, 255, 0.18);
+        border-radius: 28px;
+        background:
+          radial-gradient(circle at 20% 0%, rgba(255, 232, 150, 0.25), transparent 28%),
+          linear-gradient(180deg, rgba(9, 26, 60, 0.96), rgba(4, 13, 31, 0.96));
+      }
+
+      .tabs,
+      .mock-card,
+      .rank-row,
+      .match-row {
+        border: 1px solid rgba(150, 185, 255, 0.15);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.065);
+      }
+
+      .tabs {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 6px;
+        padding: 7px;
+      }
+
+      .tabs span {
+        display: grid;
+        min-height: 34px;
+        place-items: center;
+        border-radius: 10px;
+        color: rgba(225, 234, 255, 0.78);
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .tabs span:first-child {
+        background: rgba(255, 216, 80, 0.16);
+        color: #ffe29a;
+      }
+
+      .mock-card {
+        padding: 13px;
+      }
+
+      .mock-title {
+        display: flex;
+        justify-content: space-between;
+        gap: 10px;
+        color: #ffe29a;
+        font-size: 12px;
+        font-weight: 900;
+      }
+
+      .flags {
+        display: flex;
+        gap: 8px;
+        margin-top: 12px;
+      }
+
+      .flags img {
+        width: 46px;
+        height: 32px;
+        object-fit: cover;
+        border-radius: 4px;
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.36);
+      }
+
+      .rank-list {
+        display: grid;
+        gap: 8px;
+      }
+
+      .rank-row,
+      .match-row {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        align-items: center;
+        gap: 10px;
+        padding: 10px;
+      }
+
+      .rank-no {
+        color: #ffe29a;
+        font-weight: 900;
+      }
+
+      .rank-row strong,
+      .match-row strong {
+        color: #f7fbff;
+      }
+
+      .rank-row span,
+      .match-row span {
+        color: rgba(205, 219, 255, 0.68);
+        font-size: 12px;
+      }
+
+      .points {
+        color: #ffe29a;
+        font-weight: 900;
+      }
+
+      .sections {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-top: 18px;
+      }
+
+      .section {
+        padding: 18px;
+      }
+
+      .section h2,
+      .share-box h2 {
+        color: #fff7dd;
+        font-size: 22px;
+        letter-spacing: 0;
+      }
+
+      .section p,
+      .share-box p {
+        margin-top: 10px;
+        color: rgba(225, 234, 255, 0.78);
+        font-size: 14px;
+        line-height: 1.7;
+      }
+
+      .share-box {
+        margin-top: 18px;
+        padding: 18px;
+      }
+
+      .post {
+        margin-top: 12px;
+        padding: 14px;
+        border: 1px solid rgba(255, 232, 150, 0.26);
+        border-radius: 14px;
+        background: rgba(4, 13, 31, 0.54);
+        color: #f7fbff;
+        line-height: 1.7;
+      }
+
+      .post-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 12px;
+        color: rgba(205, 219, 255, 0.72);
+        font-size: 13px;
+      }
+
+      .copy {
+        border: 1px solid rgba(214, 236, 255, 0.2);
+        border-radius: 10px;
+        background: rgba(255, 255, 255, 0.08);
+        color: #eef5ff;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 900;
+        padding: 9px 12px;
+      }
+
+      .article {
+        margin-top: 12px;
+        color: rgba(225, 234, 255, 0.82);
+        line-height: 1.8;
+      }
+
+      .footer {
+        margin-top: 24px;
+        color: rgba(205, 219, 255, 0.6);
+        font-size: 12px;
+        line-height: 1.7;
+      }
+
+      @media (max-width: 820px) {
+        .hero,
+        .sections {
+          grid-template-columns: 1fr;
+        }
+
+        .phone {
+          min-height: 460px;
+        }
+      }
+
+      @media (max-width: 540px) {
+        .page {
+          padding: 14px 12px 30px;
+        }
+
+        .top {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .hero-copy,
+        .section,
+        .share-box {
+          border-radius: 18px;
+        }
+
+        .phone {
+          min-height: 430px;
+          padding: 12px;
+        }
+
+        .screen {
+          min-height: 406px;
+          border-radius: 22px;
+        }
+
+        .flags img {
+          width: 40px;
+          height: 28px;
+        }
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        body::before,
+        body::after {
+          animation: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="page">
+      <header class="top">
+        <div class="brand">
+          <span class="brand-mark">WC</span>
+          <span>W杯2026 ドラフト集計アプリ</span>
+        </div>
+        <a href="https://worldcup-trapelko-app.onrender.com/">アプリを開く</a>
+      </header>
+
+      <section class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">LINEグループで遊ぶW杯ドラフト</p>
+          <h1>国を取る。試合で順位が動く。</h1>
+          <p class="lead">
+            友だち同士で出場国をドラフトし、試合結果に合わせてポイントと順位を追いかけるための共有ボードです。
+            ルームを作って、各自が非公開で国を選び、被った国はルーレットで決定。大会中はランキングと最終予想グラフで盛り上がれます。
+          </p>
+          <div class="actions">
+            <a class="button" href="https://worldcup-trapelko-app.onrender.com/">アプリを開く</a>
+            <a class="button secondary" href="#share">X投稿文を見る</a>
+          </div>
+        </div>
+
+        <aside class="phone" aria-label="アプリ画面イメージ">
+          <div class="screen">
+            <div class="tabs">
+              <span>ルーム</span>
+              <span>試合</span>
+              <span>順位</span>
+              <span>予想</span>
+            </div>
+            <div class="mock-card">
+              <div class="mock-title">
+                <span>ドラフト対象</span>
+                <span>48カ国</span>
+              </div>
+              <div class="flags">
+                <img src="https://flagcdn.com/br.svg" alt="ブラジルの国旗" />
+                <img src="https://flagcdn.com/jp.svg" alt="日本の国旗" />
+                <img src="https://flagcdn.com/es.svg" alt="スペインの国旗" />
+                <img src="https://flagcdn.com/us.svg" alt="アメリカの国旗" />
+                <img src="https://flagcdn.com/ma.svg" alt="モロッコの国旗" />
+              </div>
+            </div>
+            <div class="rank-list">
+              <div class="rank-row">
+                <span class="rank-no">1</span>
+                <strong>プレイヤーA</strong>
+                <span class="points">42pt</span>
+              </div>
+              <div class="rank-row">
+                <span class="rank-no">2</span>
+                <strong>プレイヤーB</strong>
+                <span class="points">39pt</span>
+              </div>
+              <div class="rank-row">
+                <span class="rank-no">3</span>
+                <strong>プレイヤーC</strong>
+                <span class="points">34pt</span>
+              </div>
+            </div>
+            <div class="match-row">
+              <span>グループF</span>
+              <strong>日本 vs オランダ</strong>
+              <span>試合前</span>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <section class="sections" aria-label="主な機能">
+        <article class="section">
+          <h2>ルームで遊ぶ</h2>
+          <p>合言葉つきのルームを作成し、最大8人で参加。LINEグループにURLを貼れば、スマホからそのまま始められます。</p>
+        </article>
+        <article class="section">
+          <h2>非公開ピック</h2>
+          <p>各自が狙う国を秘密で選択。公開後、同じ国に3人以上が集まった場合はルーレットで決定します。</p>
+        </article>
+        <article class="section">
+          <h2>順位と予想</h2>
+          <p>試合結果、配点、保有国をもとに順位を集計。平均値と中央値で、最後まで誰が勝ちそうか見られます。</p>
+        </article>
+      </section>
+
+      <section class="share-box" id="share">
+        <h2>X紹介用の投稿文</h2>
+        <p>通常投稿の文字数制限内に収めた紹介文です。</p>
+        <div class="post" id="x-post">
+          W杯2026を友だちともっと楽しむためのドラフト集計アプリを作りました。国を取り合って、試合結果に合わせてポイントと順位が動きます。ルーム作成、非公開ピック、被りルーレット、最終予想グラフつき。無料で遊べます。 https://worldcup-trapelko-app.onrender.com/lp/
+        </div>
+        <div class="post-meta">
+          <span>152文字</span>
+          <button class="copy" type="button" id="copy-post">投稿文をコピー</button>
+          <a class="button secondary" href="https://twitter.com/intent/tweet?text=W%E6%9D%AF2026%E3%82%92%E5%8F%8B%E3%81%A0%E3%81%A1%E3%81%A8%E3%82%82%E3%81%A3%E3%81%A8%E6%A5%BD%E3%81%97%E3%82%80%E3%81%9F%E3%82%81%E3%81%AE%E3%83%89%E3%83%A9%E3%83%95%E3%83%88%E9%9B%86%E8%A8%88%E3%82%A2%E3%83%97%E3%83%AA%E3%82%92%E4%BD%9C%E3%82%8A%E3%81%BE%E3%81%97%E3%81%9F%E3%80%82%E5%9B%BD%E3%82%92%E5%8F%96%E3%82%8A%E5%90%88%E3%81%A3%E3%81%A6%E3%80%81%E8%A9%A6%E5%90%88%E7%B5%90%E6%9E%9C%E3%81%AB%E5%90%88%E3%82%8F%E3%81%9B%E3%81%A6%E3%83%9D%E3%82%A4%E3%83%B3%E3%83%88%E3%81%A8%E9%A0%86%E4%BD%8D%E3%81%8C%E5%8B%95%E3%81%8D%E3%81%BE%E3%81%99%E3%80%82%E3%83%AB%E3%83%BC%E3%83%A0%E4%BD%9C%E6%88%90%E3%80%81%E9%9D%9E%E5%85%AC%E9%96%8B%E3%83%94%E3%83%83%E3%82%AF%E3%80%81%E8%A2%AB%E3%82%8A%E3%83%AB%E3%83%BC%E3%83%AC%E3%83%83%E3%83%88%E3%80%81%E6%9C%80%E7%B5%82%E4%BA%88%E6%83%B3%E3%82%B0%E3%83%A9%E3%83%95%E3%81%A4%E3%81%8D%E3%80%82%E7%84%A1%E6%96%99%E3%81%A7%E9%81%8A%E3%81%B9%E3%81%BE%E3%81%99%E3%80%82%20https%3A%2F%2Fworldcup-trapelko-app.onrender.com%2Flp%2F" target="_blank" rel="noopener noreferrer">Xで投稿する</a>
+        </div>
+        <div class="article">
+          <p>
+            W杯2026の観戦を、ただ試合を見るだけで終わらせないためのドラフト集計アプリです。参加者はそれぞれ出場国を選び、
+            試合結果やボーナスに応じてポイントを獲得します。ランキングは自動で並び替わり、最終予想グラフで平均値や中央値も確認できます。
+          </p>
+          <p>
+            ルーム機能では、友だちごとに非公開で国をピックし、公開後に被った国をルーレットで決められます。LINEグループにURLを貼っておけば、
+            スマホからすぐ参加できるので、少人数の観戦グループや会社の仲間内でも使いやすい構成です。
+          </p>
+        </div>
+      </section>
+
+      <p class="footer">
+        This app is an independent fan-made draft board and is not affiliated with FIFA, World Cup organizers, LINE, X, or any football association.
+      </p>
+    </div>
+
+    <script>
+      const button = document.getElementById("copy-post")
+      const post = document.getElementById("x-post")
+      button?.addEventListener("click", async () => {
+        try {
+          await navigator.clipboard.writeText(post?.textContent?.trim() || "")
+          button.textContent = "コピーしました"
+          window.setTimeout(() => {
+            button.textContent = "投稿文をコピー"
+          }, 1600)
+        } catch {
+          button.textContent = "コピーできませんでした"
+        }
+      })
+    </script>
+  </body>
+</html>
