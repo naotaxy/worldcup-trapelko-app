@@ -5,77 +5,66 @@
   padding: 24px;
 }
 
-/* FIFA 2026 inspired animated backdrop: deep blue field, twin double-line arcs
-   sweeping from the top-left and bottom-right corners, with stars orbiting the
-   arcs. Pure CSS, GPU-friendly transforms. */
+/* FIFA 2026 inspired backdrop: royal-blue field with gold concentric ray-lines
+   fanning from the top-left and bottom-right corners, plus large gold stars.
+   Pure CSS; the ray fans drift outward, the stars twinkle/orbit. */
 .fifa-bg {
   position: fixed;
   inset: 0;
   z-index: 0;
   overflow: hidden;
   pointer-events: none;
-  background:
-    radial-gradient(135% 120% at 0% 0%, rgba(46, 120, 240, 0.32), transparent 46%),
-    radial-gradient(135% 120% at 100% 100%, rgba(18, 74, 190, 0.36), transparent 46%),
-    radial-gradient(60% 50% at 50% 120%, rgba(214, 40, 64, 0.1), transparent 60%),
-    linear-gradient(150deg, #06142f 0%, #0a2050 38%, #103172 62%, #07193f 100%);
+  background: radial-gradient(140% 130% at 50% -12%, #1b54bd 0%, #123f9c 44%, #0a2c72 78%, #081f55 100%);
 }
 
-.fifa-arc {
-  position: absolute;
-  width: 104vmax;
-  height: 104vmax;
-  border-radius: 50%;
-  border: 3px solid rgba(255, 206, 86, 0.5);
-  box-shadow: 0 0 120px rgba(255, 190, 60, 0.18);
-}
-
-.fifa-arc::after {
+.fifa-bg::before,
+.fifa-bg::after {
   content: '';
   position: absolute;
-  inset: 4.5%;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 214, 110, 0.3);
+  inset: -25%;
 }
 
-.fifa-arc-tl {
-  top: -52vmax;
-  left: -52vmax;
-  animation: fifaArcTl 22s ease-in-out infinite;
+.fifa-bg::before {
+  background: repeating-radial-gradient(
+    circle at 0% 0%,
+    transparent 0 52px,
+    rgba(255, 200, 84, 0.22) 52px 55px,
+    transparent 55px 112px
+  );
+  animation: fifaFanA 26s linear infinite;
 }
 
-.fifa-arc-br {
-  right: -52vmax;
-  bottom: -52vmax;
-  animation: fifaArcBr 26s ease-in-out infinite;
+.fifa-bg::after {
+  background: repeating-radial-gradient(
+    circle at 100% 100%,
+    transparent 0 52px,
+    rgba(255, 200, 84, 0.17) 52px 55px,
+    transparent 55px 112px
+  );
+  animation: fifaFanB 32s linear infinite;
 }
 
-@keyframes fifaArcTl {
-  0%,
-  100% {
-    transform: scale(1);
-    opacity: 0.85;
+@keyframes fifaFanA {
+  from {
+    background-position: 0 0;
   }
-  50% {
-    transform: scale(1.05);
-    opacity: 1;
+  to {
+    background-position: 112px 112px;
   }
 }
 
-@keyframes fifaArcBr {
-  0%,
-  100% {
-    transform: scale(1.04);
-    opacity: 1;
+@keyframes fifaFanB {
+  from {
+    background-position: 0 0;
   }
-  50% {
-    transform: scale(1);
-    opacity: 0.82;
+  to {
+    background-position: -112px -112px;
   }
 }
 
 .fifa-stars {
   position: absolute;
+  z-index: 1;
   width: 0;
   height: 0;
 }
@@ -159,7 +148,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .fifa-arc,
+  .fifa-bg::before,
+  .fifa-bg::after,
   .fifa-stars,
   .fifa-star {
     animation: none;

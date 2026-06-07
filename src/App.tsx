@@ -415,8 +415,6 @@ function App() {
   return (
     <main className="app-shell">
       <div className="fifa-bg" aria-hidden="true">
-        <div className="fifa-arc fifa-arc-tl" />
-        <div className="fifa-arc fifa-arc-br" />
         <div className="fifa-stars fifa-stars-tl">
           <span className="fifa-star" />
           <span className="fifa-star white" />
