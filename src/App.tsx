@@ -12,10 +12,12 @@ import {
   Settings,
   Shuffle,
   Trophy,
+  Users,
   X,
 } from 'lucide-react'
 import './App.css'
 import { CountrySlot, type SlotCountry } from './components/CountrySlot'
+import { RoomsPanel } from './components/RoomsPanel'
 import { playerInfoJa } from './data/playerInfoJa'
 import { pdfCountryInfo, pdfSquads, type PdfPlayer } from './data/wcPdf'
 import {
@@ -428,6 +430,10 @@ function App() {
       </div>
 
       <nav className="mobile-section-tabs" aria-label="sections">
+        <a href="#rooms">
+          <Users size={15} />
+          ルーム
+        </a>
         <a href="#match-desk">
           <Bell size={15} />
           試合
@@ -459,6 +465,10 @@ function App() {
       </nav>
 
       <section className="dashboard-grid">
+        <section className="panel room-panel" id="rooms">
+          <PanelTitle icon={<Users size={18} />} title="ルーム対戦" note="みんなで遊ぶ" />
+          <RoomsPanel teamStandings={teamStandings} />
+        </section>
         <details className="panel slot-panel rescue-slot-panel" id="draft-slot">
           <summary className="rescue-summary">
             <span>

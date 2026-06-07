@@ -240,6 +240,385 @@ app.get('/api/bootstrap', (_req, res) => {
   })
 })
 
+// ---- Public multiplayer draft rooms ----
+// Anyone can create a room (code + optional passphrase), invite up to 8 players
+// who join with a nickname only (no login). Each player secretly picks teams,
+// the host reveals, and 3+ collisions are resolved by roulette. Match results
+// are the shared global tournament data, so rooms only store players + picks.
+// All room data is service_role-only (RLS has no public policies).
+const ROOM_ACCENTS = ['#e23d3d', '#38a9a6', '#e0b336', '#4f7fdd', '#2ca36a', '#d9632c', '#9854d7', '#c93e79']
+const roomTeamIdsCache = { ids: null }
+async function allRoomTeamIds() {
+  if (roomTeamIdsCache.ids) return roomTeamIdsCache.ids
+  const data = await import('../src/data/worldCup2026.ts')
+  roomTeamIdsCache.ids = data.teams.map((t) => t.id)
+  return roomTeamIdsCache.ids
+}
+const genRoomToken = () => crypto.randomBytes(24).toString('hex')
+const hashRoomToken = (value) => crypto.createHash('sha256').update(String(value)).digest('hex')
+const normNickname = (value) => String(value).trim().toLowerCase().replace(/\s+/g, ' ')
+const readRoomToken = (req) => (req.body && req.body.token) || (req.query && req.query.token) || req.get('x-room-token') || ''
+const avatarFromNickname = (value) => String(value).trim().slice(0, 1).toUpperCase() || '?'
+function makeRoomCode() {
+  const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789' // no I, O, 0, 1
+  let out = ''
+  for (let i = 0; i < 6; i += 1) out += alphabet[Math.floor(Math.random() * alphabet.length)]
+  return out
+}
+function roomsReady(res) {
+  if (!supabase) {
+    res.status(503).json({ ok: false, error: 'rooms require Supabase' })
+    return false
+  }
+  return true
+}
+
+const createRoomSchema = z.object({
+  name: z.string().trim().min(1).max(40),
+  nickname: z.string().trim().min(1).max(24),
+  passphrase: z.string().max(64).optional(),
+  picksPerPlayer: z.number().int().min(1).max(12).optional(),
+  maxPlayers: z.number().int().min(2).max(8).optional(),
+})
+const joinRoomSchema = z.object({
+  nickname: z.string().trim().min(1).max(24),
+  passphrase: z.string().max(64).optional(),
+})
+const roomPicksSchema = z.object({
+  token: z.string().min(1),
+  teamIds: z.array(z.string().min(1)).min(1).max(12),
+})
+
+async function loadRoomAndPlayer(code, token) {
+  const { data: room } = await supabase.from('rooms').select('*').eq('code', code).maybeSingle()
+  if (!room) return { room: null, player: null }
+  const { data: player } = await supabase
+    .from('room_players')
+    .select('*')
+    .eq('room_id', room.id)
+    .eq('token_hash', hashRoomToken(token || ''))
+    .maybeSingle()
+  return { room, player }
+}
+
+async function requireRoomPlayer(code, token, res) {
+  const { room, player } = await loadRoomAndPlayer(code, token)
+  if (!room) {
+    res.status(404).json({ ok: false, error: 'room not found' })
+    return { room: null, player: null }
+  }
+  if (!player) {
+    res.status(403).json({ ok: false, error: 'not a member of this room' })
+    return { room: null, player: null }
+  }
+  return { room, player }
+}
+
+async function requireRoomHost(code, token, res) {
+  const { room, player } = await requireRoomPlayer(code, token, res)
+  if (!room) return { room: null, player: null }
+  if (!player.is_host) {
+    res.status(403).json({ ok: false, error: 'host only' })
+    return { room: null, player: null }
+  }
+  return { room, player }
+}
+
+async function buildRoomState(code, token) {
+  const { data: room } = await supabase.from('rooms').select('*').eq('code', code).maybeSingle()
+  if (!room) return null
+  const { data: players } = await supabase
+    .from('room_players')
+    .select('*')
+    .eq('room_id', room.id)
+    .order('seat', { ascending: true })
+  const tokenHash = token ? hashRoomToken(token) : null
+  const you = (players || []).find((p) => p.token_hash === tokenHash) || null
+  const state = {
+    code: room.code,
+    name: room.name,
+    status: room.status,
+    picksPerPlayer: room.picks_per_player,
+    maxPlayers: room.max_players,
+    maxOwnersPerTeam: room.max_owners_per_team,
+    hasPassphrase: Boolean(room.passphrase_hash),
+    players: (players || []).map((p) => ({
+      id: p.id,
+      nickname: p.nickname,
+      avatar: p.avatar,
+      accent: p.accent,
+      isHost: p.is_host,
+      picksSubmitted: p.picks_submitted,
+      seat: p.seat,
+    })),
+    submittedCount: (players || []).filter((p) => p.picks_submitted).length,
+    you: you ? { id: you.id, isHost: you.is_host, picksSubmitted: you.picks_submitted } : null,
+  }
+  if (room.status === 'picking' && you) {
+    const { data: intents } = await supabase
+      .from('room_pick_intents')
+      .select('team_id')
+      .eq('room_id', room.id)
+      .eq('player_id', you.id)
+    state.yourPicks = (intents || []).map((r) => r.team_id)
+  }
+  if (room.status === 'revealed') {
+    const { data: assignments } = await supabase.from('room_assignments').select('*').eq('room_id', room.id)
+    const { data: intents } = await supabase.from('room_pick_intents').select('player_id, team_id').eq('room_id', room.id)
+    state.assignments = (assignments || []).map((a) => ({
+      playerId: a.player_id,
+      teamId: a.team_id,
+      ownerSlot: a.owner_slot,
+      source: a.source,
+      originalTeamId: a.original_team_id,
+    }))
+    const picksByPlayer = {}
+    for (const it of intents || []) {
+      if (!picksByPlayer[it.player_id]) picksByPlayer[it.player_id] = []
+      picksByPlayer[it.player_id].push(it.team_id)
+    }
+    state.picksByPlayer = picksByPlayer
+  }
+  return state
+}
+
+app.post('/api/rooms', async (req, res) => {
+  if (!roomsReady(res)) return
+  const parsed = createRoomSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: 'invalid input' })
+    return
+  }
+  const { name, nickname, passphrase, picksPerPlayer, maxPlayers } = parsed.data
+  let code = null
+  for (let i = 0; i < 6; i += 1) {
+    const candidate = makeRoomCode()
+    const { data: exists } = await supabase.from('rooms').select('id').eq('code', candidate).maybeSingle()
+    if (!exists) {
+      code = candidate
+      break
+    }
+  }
+  if (!code) {
+    res.status(500).json({ ok: false, error: 'could not allocate room code' })
+    return
+  }
+  const { data: room, error: roomErr } = await supabase
+    .from('rooms')
+    .insert({
+      code,
+      name,
+      passphrase_hash: passphrase ? hashRoomToken(passphrase) : null,
+      picks_per_player: picksPerPlayer ?? 8,
+      max_players: maxPlayers ?? 8,
+    })
+    .select()
+    .single()
+  if (roomErr) {
+    res.status(500).json({ ok: false, error: roomErr.message })
+    return
+  }
+  const token = genRoomToken()
+  const { data: player, error: playerErr } = await supabase
+    .from('room_players')
+    .insert({
+      room_id: room.id,
+      nickname,
+      nickname_norm: normNickname(nickname),
+      token_hash: hashRoomToken(token),
+      is_host: true,
+      seat: 1,
+      avatar: avatarFromNickname(nickname),
+      accent: ROOM_ACCENTS[0],
+    })
+    .select()
+    .single()
+  if (playerErr) {
+    res.status(500).json({ ok: false, error: playerErr.message })
+    return
+  }
+  res.json({ ok: true, code, token, playerId: player.id, isHost: true, room: await buildRoomState(code, token) })
+})
+
+app.post('/api/rooms/:code/join', async (req, res) => {
+  if (!roomsReady(res)) return
+  const parsed = joinRoomSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: 'invalid input' })
+    return
+  }
+  const code = String(req.params.code).toUpperCase()
+  const { data: room } = await supabase.from('rooms').select('*').eq('code', code).maybeSingle()
+  if (!room) {
+    res.status(404).json({ ok: false, error: 'room not found' })
+    return
+  }
+  if (room.status !== 'lobby') {
+    res.status(409).json({ ok: false, error: 'this room has already started' })
+    return
+  }
+  if (room.passphrase_hash && hashRoomToken(parsed.data.passphrase || '') !== room.passphrase_hash) {
+    res.status(403).json({ ok: false, error: 'wrong passphrase' })
+    return
+  }
+  const { data: players } = await supabase.from('room_players').select('id, nickname_norm').eq('room_id', room.id)
+  if ((players || []).length >= room.max_players) {
+    res.status(409).json({ ok: false, error: 'room is full' })
+    return
+  }
+  const nickNorm = normNickname(parsed.data.nickname)
+  if ((players || []).some((p) => p.nickname_norm === nickNorm)) {
+    res.status(409).json({ ok: false, error: 'nickname already taken in this room' })
+    return
+  }
+  const seat = (players || []).length + 1
+  const token = genRoomToken()
+  const { error } = await supabase.from('room_players').insert({
+    room_id: room.id,
+    nickname: parsed.data.nickname,
+    nickname_norm: nickNorm,
+    token_hash: hashRoomToken(token),
+    seat,
+    avatar: avatarFromNickname(parsed.data.nickname),
+    accent: ROOM_ACCENTS[(seat - 1) % ROOM_ACCENTS.length],
+  })
+  if (error) {
+    res.status(500).json({ ok: false, error: error.message })
+    return
+  }
+  res.json({ ok: true, code, token, room: await buildRoomState(code, token) })
+})
+
+app.get('/api/rooms/:code', async (req, res) => {
+  if (!roomsReady(res)) return
+  const code = String(req.params.code).toUpperCase()
+  const state = await buildRoomState(code, readRoomToken(req))
+  if (!state) {
+    res.status(404).json({ ok: false, error: 'room not found' })
+    return
+  }
+  res.json({ ok: true, room: state })
+})
+
+app.post('/api/rooms/:code/start', async (req, res) => {
+  if (!roomsReady(res)) return
+  const code = String(req.params.code).toUpperCase()
+  const token = readRoomToken(req)
+  const { room } = await requireRoomHost(code, token, res)
+  if (!room) return
+  if (room.status !== 'lobby') {
+    res.status(409).json({ ok: false, error: 'room is not in lobby' })
+    return
+  }
+  await supabase.from('rooms').update({ status: 'picking', updated_at: new Date().toISOString() }).eq('id', room.id)
+  res.json({ ok: true, room: await buildRoomState(code, token) })
+})
+
+app.post('/api/rooms/:code/picks', async (req, res) => {
+  if (!roomsReady(res)) return
+  const parsed = roomPicksSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: 'invalid input' })
+    return
+  }
+  const code = String(req.params.code).toUpperCase()
+  const { room, player } = await requireRoomPlayer(code, parsed.data.token, res)
+  if (!room) return
+  if (room.status !== 'picking') {
+    res.status(409).json({ ok: false, error: 'room is not in the picking phase' })
+    return
+  }
+  const ids = [...new Set(parsed.data.teamIds)]
+  if (ids.length !== room.picks_per_player) {
+    res.status(400).json({ ok: false, error: `pick exactly ${room.picks_per_player} teams` })
+    return
+  }
+  const validIds = new Set(await allRoomTeamIds())
+  if (!ids.every((id) => validIds.has(id))) {
+    res.status(400).json({ ok: false, error: 'unknown team in selection' })
+    return
+  }
+  await supabase.from('room_pick_intents').delete().eq('room_id', room.id).eq('player_id', player.id)
+  const rows = ids.map((teamId) => ({ room_id: room.id, player_id: player.id, team_id: teamId }))
+  const { error } = await supabase.from('room_pick_intents').insert(rows)
+  if (error) {
+    res.status(500).json({ ok: false, error: error.message })
+    return
+  }
+  await supabase
+    .from('room_players')
+    .update({ picks_submitted: true, last_seen_at: new Date().toISOString() })
+    .eq('id', player.id)
+  res.json({ ok: true, room: await buildRoomState(code, parsed.data.token) })
+})
+
+app.post('/api/rooms/:code/reveal', async (req, res) => {
+  if (!roomsReady(res)) return
+  const code = String(req.params.code).toUpperCase()
+  const token = readRoomToken(req)
+  const { room } = await requireRoomHost(code, token, res)
+  if (!room) return
+  if (room.status === 'revealed') {
+    res.json({ ok: true, room: await buildRoomState(code, token) })
+    return
+  }
+  if (room.status !== 'picking') {
+    res.status(409).json({ ok: false, error: 'room is not in the picking phase' })
+    return
+  }
+  const { data: players } = await supabase.from('room_players').select('id, picks_submitted').eq('room_id', room.id)
+  const submitted = (players || []).filter((p) => p.picks_submitted)
+  if (submitted.length < 2) {
+    res.status(409).json({ ok: false, error: 'need at least 2 players to have submitted' })
+    return
+  }
+  if (req.query.force !== '1' && submitted.length !== (players || []).length) {
+    res.status(409).json({
+      ok: false,
+      error: 'not everyone has submitted',
+      submittedCount: submitted.length,
+      total: (players || []).length,
+    })
+    return
+  }
+  const { data: intents } = await supabase.from('room_pick_intents').select('player_id, team_id').eq('room_id', room.id)
+  const submittedSet = new Set(submitted.map((p) => p.id))
+  const draftIntents = (intents || [])
+    .filter((r) => submittedSet.has(r.player_id))
+    .map((r) => ({ playerId: r.player_id, teamId: r.team_id }))
+  const { resolveDraft } = await import('../src/logic/roomDraft.ts')
+  const result = resolveDraft(draftIntents, {
+    allTeamIds: await allRoomTeamIds(),
+    maxOwnersPerTeam: room.max_owners_per_team,
+  })
+  await supabase.from('room_assignments').delete().eq('room_id', room.id)
+  const rows = result.assignments.map((a) => ({
+    room_id: room.id,
+    player_id: a.playerId,
+    team_id: a.teamId,
+    owner_slot: a.ownerSlot,
+    source: a.source,
+    original_team_id: a.originalTeamId || null,
+  }))
+  if (rows.length) {
+    const { error } = await supabase.from('room_assignments').insert(rows)
+    if (error) {
+      res.status(500).json({ ok: false, error: error.message })
+      return
+    }
+  }
+  await supabase
+    .from('rooms')
+    .update({ status: 'revealed', revealed_at: new Date().toISOString(), updated_at: new Date().toISOString() })
+    .eq('id', room.id)
+  res.json({
+    ok: true,
+    spins: result.spins,
+    collisionTeamIds: result.collisionTeamIds,
+    room: await buildRoomState(code, token),
+  })
+})
+
 app.get('/api/rules', (_req, res) => {
   res.json({
     ok: true,
