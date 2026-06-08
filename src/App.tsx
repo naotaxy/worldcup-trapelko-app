@@ -292,6 +292,12 @@ function App() {
     () => calculateTeamStandings(groups, liveFixtures, rules, awards, qualifierIds),
     [awards, liveFixtures, rules, qualifierIds],
   )
+  // Public rooms are scored with the neutral public ruleset (insider rules/japan2x
+  // never leak into public games), but share the real tournament results + awards.
+  const publicTeamStandings = useMemo(
+    () => calculateTeamStandings(groups, liveFixtures, publicRules, awards, qualifierIds),
+    [awards, liveFixtures, qualifierIds],
+  )
   const memberStandings = useMemo(
     () => calculateMemberStandings(demoMembers, draftSelections, teamStandings),
     [demoMembers, draftSelections, teamStandings],
@@ -596,8 +602,9 @@ function App() {
             </span>
             <em>みんなで遊ぶ</em>
           </summary>
-          <RoomsPanel teamStandings={teamStandings} />
+          <RoomsPanel teamStandings={publicTeamStandings} />
         </details>
+        <PublicRulesPanel rules={publicRules} />
         {boardUnlocked ? (
           <>
         <details className="panel slot-panel rescue-slot-panel" id="draft-slot">
@@ -1122,6 +1129,10 @@ function App() {
 const SUPPORT_PAYPAY_URL = 'https://qr.paypay.ne.jp/p2p01_dtQeYi1ETPoCdhoi'
 const SUPPORT_STRIPE_URL = ''
 
+// Public rooms use a fixed, neutral ruleset: no insider house rules (e.g. 日本2倍)
+// and unaffected by the insider board's editable rules.
+const publicRules: Rules = { ...defaultRules, japanMultiplier: 1 }
+
 function SupportBar() {
   const [showPaypay, setShowPaypay] = useState(false)
   if (!SUPPORT_PAYPAY_URL && !SUPPORT_STRIPE_URL) return null
@@ -1162,6 +1173,46 @@ function SupportBar() {
         </div>
       ) : null}
     </>
+  )
+}
+
+function PublicRulesPanel({ rules }: { rules: Rules }) {
+  const items: Array<[string, number]> = [
+    ['勝ち', rules.win],
+    ['PK勝ち', rules.penaltyWin],
+    ['引分', rules.draw],
+    ['3点差勝ち', rules.goalMargin3Bonus],
+    ['ハットトリック', rules.hatTrickBonus],
+    ['決勝T進出', rules.knockoutQualifiedBonus],
+    ['全敗', rules.allLossBonus],
+    ['優勝', rules.championBonus],
+    ['準優勝', rules.runnerUpBonus],
+    ['3位', rules.thirdPlaceBonus],
+    ['MVP', rules.mvpBonus],
+    ['得点王', rules.topScorerBonus],
+    ['黄カード4枚', rules.yellowCardsFourPenalty],
+    ['レッドカード', rules.redCardPenalty],
+    ['オウンゴール', rules.ownGoalPenalty],
+  ]
+  return (
+    <details className="panel rules-readonly" id="public-rules">
+      <summary className="rescue-summary">
+        <span>
+          <Settings size={18} />
+          <strong>配点ルール</strong>
+        </span>
+        <em>ポイントの付き方</em>
+      </summary>
+      <p className="rules-readonly-note">獲得した国の成績でポイントが入り、保有国の合計があなたの得点になります。</p>
+      <ul className="rules-readonly-list">
+        {items.map(([label, value]) => (
+          <li key={label}>
+            <span>{label}</span>
+            <strong>{value > 0 ? `+${value}` : value}</strong>
+          </li>
+        ))}
+      </ul>
+    </details>
   )
 }
 
