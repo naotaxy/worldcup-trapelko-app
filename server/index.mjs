@@ -144,6 +144,16 @@ function syncAuthorized(req) {
   return !key || req.query.key === key
 }
 
+// Mutating board endpoints (manual results, rules/awards, member linking) require
+// the board passphrase. Without it set, these are locked (deny) so the public
+// cannot tamper with shared scoring/results.
+function adminAuthorized(req) {
+  const expected = process.env.BOARD_PASSPHRASE || ''
+  if (!expected) return false
+  const key = req.get('x-admin-key') || (req.body && req.body.adminKey) || req.query.adminKey || ''
+  return key === expected
+}
+
 // Combined live sync: ESPN (scores + events) + football-data fallback.
 app.post('/api/sync', async (req, res) => {
   if (!syncAuthorized(req)) {
@@ -788,6 +798,10 @@ app.get('/api/rules', (_req, res) => {
 })
 
 app.post('/api/members/line', async (req, res) => {
+  if (!adminAuthorized(req)) {
+    res.status(403).json({ ok: false, error: 'forbidden' })
+    return
+  }
   const profile = lineMemberSchema.parse(req.body)
   const row = {
     line_user_id: profile.lineUserId,
@@ -808,7 +822,11 @@ app.post('/api/members/line', async (req, res) => {
 })
 
 app.post('/api/rules', async (req, res) => {
-  const { awards: rawAwards, ...rawRules } = req.body || {}
+  if (!adminAuthorized(req)) {
+    res.status(403).json({ ok: false, error: 'forbidden' })
+    return
+  }
+  const { awards: rawAwards, adminKey: _adminKey, ...rawRules } = req.body || {}
   const rules = rulesSchema.parse(rawRules)
   const awards = rawAwards ? awardsSchema.parse(rawAwards) : memoryState.awards
   memoryState.rules = rules
@@ -872,6 +890,10 @@ app.get('/api/state', async (_req, res) => {
 })
 
 app.post('/api/results', async (req, res) => {
+  if (!adminAuthorized(req)) {
+    res.status(403).json({ ok: false, error: 'forbidden' })
+    return
+  }
   const result = resultSchema.parse(req.body)
   const row = {
     match_id: result.matchId,

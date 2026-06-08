@@ -58,11 +58,19 @@ async function getJson<T>(path: string): Promise<T | null> {
   }
 }
 
-async function postJson<T>(path: string, body: unknown): Promise<T | null> {
+function adminKey(): string {
+  try {
+    return localStorage.getItem('wc-board-key') || ''
+  } catch {
+    return ''
+  }
+}
+
+async function postJson<T>(path: string, body: unknown, extraHeaders?: Record<string, string>): Promise<T | null> {
   try {
     const res = await fetch(path, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      headers: { 'content-type': 'application/json', accept: 'application/json', ...(extraHeaders || {}) },
       body: JSON.stringify(body),
     })
     if (!res.ok) return null
@@ -103,12 +111,12 @@ export async function pushResult(matchId: string, result: MatchResult, notifyTo?
     awayOwnGoals: result.awayOwnGoals ?? 0,
     ...(notifyTo ? { notifyTo } : {}),
   }
-  const out = await postJson<{ ok: boolean }>('/api/results', payload)
+  const out = await postJson<{ ok: boolean }>('/api/results', payload, { 'x-admin-key': adminKey() })
   return Boolean(out?.ok)
 }
 
 export async function pushRules(rules: Rules, awards: AwardSettings): Promise<boolean> {
-  const out = await postJson<{ ok: boolean }>('/api/rules', { ...rules, awards })
+  const out = await postJson<{ ok: boolean }>('/api/rules', { ...rules, awards }, { 'x-admin-key': adminKey() })
   return Boolean(out?.ok)
 }
 
@@ -134,6 +142,6 @@ export async function linkLineMember(profile: {
   pictureUrl?: string
   realName?: string
 }): Promise<boolean> {
-  const out = await postJson<{ ok: boolean }>('/api/members/line', profile)
+  const out = await postJson<{ ok: boolean }>('/api/members/line', profile, { 'x-admin-key': adminKey() })
   return Boolean(out?.ok)
 }
