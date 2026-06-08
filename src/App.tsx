@@ -314,6 +314,12 @@ function App() {
     () => calculateTeamStandings(groups, liveFixtures, publicRules, awards, qualifierIds, odds),
     [awards, liveFixtures, qualifierIds, odds],
   )
+  // Once every group fixture is played, switch the focus to the knockout bracket
+  // (promote it to the top) and collapse the group tables.
+  const groupStageComplete = useMemo(
+    () => liveFixtures.length > 0 && liveFixtures.every((match) => match.result.home !== null && match.result.away !== null),
+    [liveFixtures],
+  )
   const memberStandings = useMemo(
     () => calculateMemberStandings(demoMembers, draftSelections, teamStandings),
     [demoMembers, draftSelections, teamStandings],
@@ -631,6 +637,7 @@ function App() {
         <PublicRulesPanel rules={publicRules} />
         {boardUnlocked ? (
           <>
+        {groupStageComplete ? <KnockoutBracket /> : null}
         <details className="panel slot-panel rescue-slot-panel" id="draft-slot">
           <summary className="rescue-summary">
             <span>
@@ -861,8 +868,14 @@ function App() {
           </div>
         </details>
 
-        <section className="panel group-panel" id="group-standings">
-          <PanelTitle icon={<Trophy size={18} />} title={`グループ${activeGroup} 順位`} note="国をタップで詳細" />
+        <details className="panel group-panel" id="group-standings" open={groupStageComplete ? undefined : true}>
+          <summary className="rescue-summary">
+            <span>
+              <Trophy size={18} />
+              <strong>グループ{activeGroup} 順位</strong>
+            </span>
+            <em>{groupStageComplete ? '予選終了・タップで確認' : '国をタップで詳細'}</em>
+          </summary>
           <nav className="group-tabs" aria-label="groups">
             {groups.map((group) => (
               <button
@@ -907,7 +920,7 @@ function App() {
               </button>
             ))}
           </div>
-        </section>
+        </details>
 
         <section className="panel leaderboard-panel" id="member-ranking">
           <PanelTitle icon={<Medal size={18} />} title="参加者ランキング" note="総合ポイント" />
@@ -1059,7 +1072,7 @@ function App() {
           </details>
         </section>
 
-        <KnockoutBracket />
+        {!groupStageComplete ? <KnockoutBracket /> : null}
 
         <details className="panel rules-panel" id="rules-lab">
           <summary className="rescue-summary">
