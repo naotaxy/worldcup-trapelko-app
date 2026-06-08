@@ -248,6 +248,10 @@ export const defaultRules: Rules = {
   redCardPenalty: -2,
   ownGoalPenalty: -2,
   japanMultiplier: 2,
+  doubleHatTrickOnSix: true,
+  doubleRedCardOnTwo: true,
+  doubleJapanNegative: true,
+  oddsMultiplier: false,
 }
 
 // Japanese (katakana) country names, shared by the frontend and the LINE bot.

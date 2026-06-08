@@ -58,7 +58,21 @@ import {
 import { fetchTournament, knockoutTeamIds, type BracketMatch, type BracketRound, type BracketTeam } from './lib/bracket'
 import { loadLocalState, saveLocalState } from './lib/persistence'
 
-const ruleFields: Array<{ key: keyof Rules; label: string; min: number; max: number; step: number }> = [
+type NumericRuleKey = { [K in keyof Rules]-?: Rules[K] extends number ? K : never }[keyof Rules]
+type BoolRuleKey = { [K in keyof Rules]-?: boolean extends Rules[K] ? K : never }[keyof Rules]
+const ruleToggleDefaults: Record<BoolRuleKey, boolean> = {
+  doubleHatTrickOnSix: true,
+  doubleRedCardOnTwo: true,
+  doubleJapanNegative: true,
+  oddsMultiplier: false,
+}
+const ruleToggleFields: Array<{ key: BoolRuleKey; label: string; hint: string }> = [
+  { key: 'doubleHatTrickOnSix', label: '6得点でハットトリック2倍', hint: '1選手6得点の試合はハットトリック点が2倍' },
+  { key: 'doubleRedCardOnTwo', label: 'レッドカード2枚で2倍', hint: '1チームが1試合で2枚以上なら赤ペナルティ2倍' },
+  { key: 'doubleJapanNegative', label: '日本はマイナスも2倍', hint: 'OFFにすると日本のマイナスは2倍にしない' },
+  { key: 'oddsMultiplier', label: 'オッズ倍率を適用', hint: '勝った試合の勝ち点にブックメーカー倍率を掛ける(初期OFF)' },
+]
+const ruleFields: Array<{ key: NumericRuleKey; label: string; min: number; max: number; step: number }> = [
   { key: 'win', label: '勝ち', min: 0, max: 10, step: 1 },
   { key: 'penaltyWin', label: 'PK勝ち', min: 0, max: 10, step: 1 },
   { key: 'draw', label: '引分', min: 0, max: 5, step: 1 },
@@ -289,14 +303,14 @@ function App() {
   }, [rules, awards, draftSelections, liveFixtures])
 
   const teamStandings = useMemo(
-    () => calculateTeamStandings(groups, liveFixtures, rules, awards, qualifierIds),
-    [awards, liveFixtures, rules, qualifierIds],
+    () => calculateTeamStandings(groups, liveFixtures, rules, awards, qualifierIds, odds),
+    [awards, liveFixtures, rules, qualifierIds, odds],
   )
   // Public rooms are scored with the neutral public ruleset (insider rules/japan2x
   // never leak into public games), but share the real tournament results + awards.
   const publicTeamStandings = useMemo(
-    () => calculateTeamStandings(groups, liveFixtures, publicRules, awards, qualifierIds),
-    [awards, liveFixtures, qualifierIds],
+    () => calculateTeamStandings(groups, liveFixtures, publicRules, awards, qualifierIds, odds),
+    [awards, liveFixtures, qualifierIds, odds],
   )
   const memberStandings = useMemo(
     () => calculateMemberStandings(demoMembers, draftSelections, teamStandings),
@@ -319,8 +333,8 @@ function App() {
     return out
   }, [odds])
   const memberProjections = useMemo(
-    () => calculateFinalProjections(demoMembers, draftSelections, groups, liveFixtures, rules, awards, projectionMode, oddsProbs, qualifierIds),
-    [awards, demoMembers, draftSelections, liveFixtures, oddsProbs, projectionMode, rules, qualifierIds],
+    () => calculateFinalProjections(demoMembers, draftSelections, groups, liveFixtures, rules, awards, projectionMode, oddsProbs, qualifierIds, odds),
+    [awards, demoMembers, draftSelections, liveFixtures, oddsProbs, projectionMode, rules, qualifierIds, odds],
   )
   const activeRows = useMemo(() => groupStandings(teamStandings, activeGroup), [teamStandings, activeGroup])
   const activeMatches = useMemo(() => liveFixtures.filter((match) => match.group === activeGroup), [liveFixtures, activeGroup])
@@ -421,7 +435,10 @@ function App() {
     )
   }
 
-  const updateRule = (key: keyof Rules, rawValue: string) => {
+  const updateRuleToggle = (key: BoolRuleKey, value: boolean) => {
+    setRules((current) => ({ ...current, [key]: value }))
+  }
+  const updateRule = (key: NumericRuleKey, rawValue: string) => {
     const value = Number(rawValue)
     setRules((current) => ({ ...current, [key]: Number.isFinite(value) ? value : current[key] }))
     setSaveLabel('未保存')
@@ -1015,6 +1032,8 @@ function App() {
             <EventNumber label={`${teamNameJa(selectedMatch.awayTeamId)} 赤カード`} value={selectedMatch.result.awayRedCards} onChange={(value) => updateMatchNumber('awayRedCards', value)} />
             <EventNumber label={`${teamNameJa(selectedMatch.homeTeamId)} オウンゴール`} value={selectedMatch.result.homeOwnGoals} onChange={(value) => updateMatchNumber('homeOwnGoals', value)} />
             <EventNumber label={`${teamNameJa(selectedMatch.awayTeamId)} オウンゴール`} value={selectedMatch.result.awayOwnGoals} onChange={(value) => updateMatchNumber('awayOwnGoals', value)} />
+            <EventNumber label={`${teamNameJa(selectedMatch.homeTeamId)} 6得点者`} value={selectedMatch.result.homeSixGoals} onChange={(value) => updateMatchNumber('homeSixGoals', value)} />
+            <EventNumber label={`${teamNameJa(selectedMatch.awayTeamId)} 6得点者`} value={selectedMatch.result.awaySixGoals} onChange={(value) => updateMatchNumber('awaySixGoals', value)} />
           </div>
           <div className="button-row">
             <button type="button" className="text-button" onClick={saveSelectedResult}>
@@ -1068,6 +1087,21 @@ function App() {
             <AwardSelect label="MVP" value={awards.mvpTeamId} onChange={(teamId) => updateAward('mvpTeamId', teamId)} />
             <AwardSelect label="得点王" value={awards.topScorerTeamId} onChange={(teamId) => updateAward('topScorerTeamId', teamId)} />
           </div>
+          <div className="rule-toggles">
+            {ruleToggleFields.map((toggle) => (
+              <label key={toggle.key} className="rule-toggle">
+                <input
+                  type="checkbox"
+                  checked={rules[toggle.key] ?? ruleToggleDefaults[toggle.key]}
+                  onChange={(event) => updateRuleToggle(toggle.key, event.target.checked)}
+                />
+                <span>
+                  <strong>{toggle.label}</strong>
+                  <em>{toggle.hint}</em>
+                </span>
+              </label>
+            ))}
+          </div>
           <button type="button" className="text-button" onClick={saveRules}>
             <Save size={16} />
             ルール保存
@@ -1104,7 +1138,7 @@ function App() {
             return (
               <TeamDetailModal
                 team={team}
-                breakdown={calculateTeamBreakdown(team, groups, liveFixtures, rules, awards, qualifierIds)}
+                breakdown={calculateTeamBreakdown(team, groups, liveFixtures, rules, awards, qualifierIds, odds)}
                 owners={teamOwnersByTeam.get(team.id) || '未決定'}
                 players={pdfSquads[team.id] || []}
                 playerStats={playerStats}

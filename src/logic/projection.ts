@@ -29,8 +29,9 @@ export function calculateFinalProjections(
   mode: ProjectionMode = 'standard',
   oddsProbs: Record<string, MatchProb> = {},
   liveQualifierIds?: Set<string>,
+  oddsByFixture?: Record<string, Record<string, number>>,
 ): MemberProjection[] {
-  const currentTeams = calculateTeamStandings(groups, fixtures, rules, awards, liveQualifierIds)
+  const currentTeams = calculateTeamStandings(groups, fixtures, rules, awards, liveQualifierIds, oddsByFixture)
   const currentMembers = calculateMemberStandings(members, selections, currentTeams)
   const currentByMember = new Map(currentMembers.map((row) => [row.member.id, row.total]))
   const sampleByMember = new Map(members.map((member) => [member.id, [] as number[]]))
@@ -49,7 +50,7 @@ export function calculateFinalProjections(
     const simulatedAwards = resolveAwards(groups, simulatedFixtures, rules, awards, rng)
     const simBaseRows = calculateTeamStandings(groups, simulatedFixtures, baselineRules(), emptyAwards())
     const simQualifiers = knockoutQualifiersFromStandings(groups, simBaseRows)
-    const teamRows = calculateTeamStandings(groups, simulatedFixtures, rules, simulatedAwards, simQualifiers)
+    const teamRows = calculateTeamStandings(groups, simulatedFixtures, rules, simulatedAwards, simQualifiers, oddsByFixture)
     const projectedTeamRows =
       mode === 'historyDemo'
         ? teamRows.map((row) => ({

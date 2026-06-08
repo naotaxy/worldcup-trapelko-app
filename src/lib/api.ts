@@ -109,6 +109,8 @@ export async function pushResult(matchId: string, result: MatchResult, notifyTo?
     awayRedCards: result.awayRedCards ?? 0,
     homeOwnGoals: result.homeOwnGoals ?? 0,
     awayOwnGoals: result.awayOwnGoals ?? 0,
+    homeSixGoals: result.homeSixGoals ?? 0,
+    awaySixGoals: result.awaySixGoals ?? 0,
     ...(notifyTo ? { notifyTo } : {}),
   }
   const out = await postJson<{ ok: boolean }>('/api/results', payload, { 'x-admin-key': adminKey() })

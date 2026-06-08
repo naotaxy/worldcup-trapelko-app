@@ -35,6 +35,8 @@ const resultSchema = z.object({
   awayPenaltyWin: z.boolean().optional(),
   homeHatTricks: z.number().int().min(0).optional(),
   awayHatTricks: z.number().int().min(0).optional(),
+  homeSixGoals: z.number().int().min(0).optional(),
+  awaySixGoals: z.number().int().min(0).optional(),
   homeYellowCards: z.number().int().min(0).optional(),
   awayYellowCards: z.number().int().min(0).optional(),
   homeRedCards: z.number().int().min(0).optional(),
@@ -61,6 +63,10 @@ const rulesSchema = z.object({
   redCardPenalty: z.number(),
   ownGoalPenalty: z.number(),
   japanMultiplier: z.number(),
+  doubleHatTrickOnSix: z.boolean().optional(),
+  doubleRedCardOnTwo: z.boolean().optional(),
+  doubleJapanNegative: z.boolean().optional(),
+  oddsMultiplier: z.boolean().optional(),
 })
 
 const awardsSchema = z.object({
@@ -793,6 +799,10 @@ app.get('/api/rules', (_req, res) => {
       redCardPenalty: -2,
       ownGoalPenalty: -2,
       japanMultiplier: 2,
+      doubleHatTrickOnSix: true,
+      doubleRedCardOnTwo: true,
+      doubleJapanNegative: true,
+      oddsMultiplier: false,
     },
   })
 })
@@ -866,12 +876,15 @@ app.get('/api/state', async (_req, res) => {
 
     const results = {}
     for (const row of resultsRes.data || []) {
+      const eventPayload = row.event_payload || {}
       results[row.match_id] = {
         home: row.home_score,
         away: row.away_score,
         homePenaltyWin: row.home_penalty_win,
         awayPenaltyWin: row.away_penalty_win,
-        ...(row.event_payload || {}),
+        ...eventPayload,
+        homeSixGoals: eventPayload.homeSixGoals ?? 0,
+        awaySixGoals: eventPayload.awaySixGoals ?? 0,
       }
     }
 
@@ -904,6 +917,8 @@ app.post('/api/results', async (req, res) => {
     event_payload: {
       homeHatTricks: result.homeHatTricks || 0,
       awayHatTricks: result.awayHatTricks || 0,
+      homeSixGoals: result.homeSixGoals || 0,
+      awaySixGoals: result.awaySixGoals || 0,
       homeYellowCards: result.homeYellowCards || 0,
       awayYellowCards: result.awayYellowCards || 0,
       homeRedCards: result.homeRedCards || 0,
@@ -1120,6 +1135,8 @@ const ESPN_BASE = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.wor
 const EVENT_KEYS = [
   'homeHatTricks',
   'awayHatTricks',
+  'homeSixGoals',
+  'awaySixGoals',
   'homeYellowCards',
   'awayYellowCards',
   'homeRedCards',
@@ -1198,6 +1215,7 @@ function parseEspnSummary(summary, data, teamById) {
   }
 
   const hatTricks = (abbr) => Object.values(tally[abbr].goals).filter((n) => n >= 3).length
+  const sixGoals = (abbr) => Object.values(tally[abbr].goals).filter((n) => n >= 6).length
   const hAbbr = teamById.get(fixture.homeTeamId).shortName
   const aAbbr = teamById.get(fixture.awayTeamId).shortName
   const hs = scoreByAbbr[hAbbr]
@@ -1211,6 +1229,8 @@ function parseEspnSummary(summary, data, teamById) {
     eventPayload: {
       homeHatTricks: hatTricks(hAbbr),
       awayHatTricks: hatTricks(aAbbr),
+      homeSixGoals: sixGoals(hAbbr),
+      awaySixGoals: sixGoals(aAbbr),
       homeYellowCards: tally[hAbbr].yellow,
       awayYellowCards: tally[aAbbr].yellow,
       homeRedCards: tally[hAbbr].red,
@@ -1354,7 +1374,10 @@ async function syncResultsFromFootballData({ notify = true, fallbackOnly = false
       away_score: orientedAway,
       home_penalty_win: false,
       away_penalty_win: false,
-      event_payload: {},
+      event_payload: {
+        homeSixGoals: 0,
+        awaySixGoals: 0,
+      },
       source: 'football-data',
       updated_at: new Date().toISOString(),
     }
@@ -1422,12 +1445,15 @@ async function computeStandingsFromDb() {
     .map((entry) => ({ memberId: entry.members.member_key, teamId: entry.team_id }))
   const resultsMap = {}
   for (const entry of resultsRes.data || []) {
+    const eventPayload = entry.event_payload || {}
     resultsMap[entry.match_id] = {
       home: entry.home_score,
       away: entry.away_score,
       homePenaltyWin: entry.home_penalty_win,
       awayPenaltyWin: entry.away_penalty_win,
-      ...(entry.event_payload || {}),
+      ...eventPayload,
+      homeSixGoals: eventPayload.homeSixGoals ?? 0,
+      awaySixGoals: eventPayload.awaySixGoals ?? 0,
     }
   }
   const fixtures = data.fixtures.map((match) =>

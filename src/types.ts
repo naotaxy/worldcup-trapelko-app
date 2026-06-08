@@ -49,6 +49,8 @@ export type MatchResult = {
   awayRedCards?: number
   homeOwnGoals?: number
   awayOwnGoals?: number
+  homeSixGoals?: number
+  awaySixGoals?: number
 }
 
 export type Match = {
@@ -94,6 +96,11 @@ export type Rules = {
   redCardPenalty: number
   ownGoalPenalty: number
   japanMultiplier: number
+  // Optional rule toggles (undefined = default: first three ON, odds OFF).
+  doubleHatTrickOnSix?: boolean
+  doubleRedCardOnTwo?: boolean
+  doubleJapanNegative?: boolean
+  oddsMultiplier?: boolean
 }
 
 export type AwardSettings = {
