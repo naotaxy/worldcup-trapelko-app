@@ -55,7 +55,7 @@ import {
   type AnalyticsSummary,
   type PlayerStat,
 } from './lib/api'
-import { fetchTournament, type BracketMatch, type BracketRound, type BracketTeam } from './lib/bracket'
+import { fetchTournament, knockoutTeamIds, type BracketMatch, type BracketRound, type BracketTeam } from './lib/bracket'
 import { loadLocalState, saveLocalState } from './lib/persistence'
 
 const ruleFields: Array<{ key: keyof Rules; label: string; min: number; max: number; step: number }> = [
@@ -241,6 +241,7 @@ function App() {
   const [playerStats, setPlayerStats] = useState<Record<string, PlayerStat>>({})
   const [schedule, setSchedule] = useState<Record<string, string>>({})
   const [odds, setOdds] = useState<Record<string, Record<string, number>>>({})
+  const [qualifierIds, setQualifierIds] = useState<Set<string>>(() => new Set())
 
   useEffect(() => {
     return () => clearSlotTimer(slotTimerRef)
@@ -253,6 +254,7 @@ function App() {
       if (cancelled) return
       if (t.schedule) setSchedule(t.schedule)
       if (t.odds) setOdds(t.odds)
+      setQualifierIds(knockoutTeamIds(t.bracket))
     })
     return () => {
       cancelled = true
@@ -286,7 +288,10 @@ function App() {
     saveLocalState({ rules, awards, selections: draftSelections, results: extractResultMap(liveFixtures) })
   }, [rules, awards, draftSelections, liveFixtures])
 
-  const teamStandings = useMemo(() => calculateTeamStandings(groups, liveFixtures, rules, awards), [awards, liveFixtures, rules])
+  const teamStandings = useMemo(
+    () => calculateTeamStandings(groups, liveFixtures, rules, awards, qualifierIds),
+    [awards, liveFixtures, rules, qualifierIds],
+  )
   const memberStandings = useMemo(
     () => calculateMemberStandings(demoMembers, draftSelections, teamStandings),
     [demoMembers, draftSelections, teamStandings],
@@ -308,8 +313,8 @@ function App() {
     return out
   }, [odds])
   const memberProjections = useMemo(
-    () => calculateFinalProjections(demoMembers, draftSelections, groups, liveFixtures, rules, awards, projectionMode, oddsProbs),
-    [awards, demoMembers, draftSelections, liveFixtures, oddsProbs, projectionMode, rules],
+    () => calculateFinalProjections(demoMembers, draftSelections, groups, liveFixtures, rules, awards, projectionMode, oddsProbs, qualifierIds),
+    [awards, demoMembers, draftSelections, liveFixtures, oddsProbs, projectionMode, rules, qualifierIds],
   )
   const activeRows = useMemo(() => groupStandings(teamStandings, activeGroup), [teamStandings, activeGroup])
   const activeMatches = useMemo(() => liveFixtures.filter((match) => match.group === activeGroup), [liveFixtures, activeGroup])
@@ -1083,7 +1088,7 @@ function App() {
             return (
               <TeamDetailModal
                 team={team}
-                breakdown={calculateTeamBreakdown(team, groups, liveFixtures, rules, awards)}
+                breakdown={calculateTeamBreakdown(team, groups, liveFixtures, rules, awards, qualifierIds)}
                 owners={teamOwnersByTeam.get(team.id) || '未決定'}
                 players={pdfSquads[team.id] || []}
                 playerStats={playerStats}

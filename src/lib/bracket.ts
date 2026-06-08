@@ -16,7 +16,7 @@ const ROUND_JA: Record<string, string> = {
   final: '決勝',
 }
 
-export type BracketTeam = { name: string; flag: string | null; score: number | null; winner: boolean }
+export type BracketTeam = { name: string; flag: string | null; score: number | null; winner: boolean; teamId: string | null }
 export type BracketMatch = { id: string; date: string; status: string; home: BracketTeam; away: BracketTeam }
 export type BracketRound = { slug: string; label: string; matches: BracketMatch[] }
 
@@ -50,6 +50,7 @@ function toTeam(competitor: EspnCompetitor | undefined): BracketTeam {
     flag: real ? flagUrl(real.flag) : null,
     score: rawScore !== undefined && rawScore !== null && rawScore !== '' ? Number(rawScore) : null,
     winner: Boolean(competitor?.winner),
+    teamId: real?.id ?? null,
   }
 }
 
@@ -153,4 +154,18 @@ export async function fetchTournament(): Promise<Tournament> {
   } catch {
     return empty
   }
+}
+
+// Team ids actually in the knockout stage (Round of 32). ESPN seeds the R32 with
+// the real qualifiers (each group's top 2 plus the 8 best third-placed teams),
+// so this is the authoritative "advanced to the knockout" set as it fills in.
+export function knockoutTeamIds(bracket: BracketRound[] | null): Set<string> {
+  const ids = new Set<string>()
+  const r32 = bracket?.find((round) => round.slug === 'round-of-32')
+  if (!r32) return ids
+  for (const match of r32.matches) {
+    if (match.home.teamId) ids.add(match.home.teamId)
+    if (match.away.teamId) ids.add(match.away.teamId)
+  }
+  return ids
 }

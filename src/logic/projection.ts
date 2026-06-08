@@ -1,5 +1,5 @@
 import type { AwardSettings, Group, Match, MatchResult, Member, Rules, Team, TeamSelection } from '../types'
-import { calculateMemberStandings, calculateTeamStandings, groupStandings, matchWasPlayed } from './score'
+import { calculateMemberStandings, calculateTeamStandings, knockoutQualifiersFromStandings, matchWasPlayed } from './score'
 
 export type MemberProjection = {
   member: Member
@@ -28,8 +28,9 @@ export function calculateFinalProjections(
   awards: AwardSettings,
   mode: ProjectionMode = 'standard',
   oddsProbs: Record<string, MatchProb> = {},
+  liveQualifierIds?: Set<string>,
 ): MemberProjection[] {
-  const currentTeams = calculateTeamStandings(groups, fixtures, rules, awards)
+  const currentTeams = calculateTeamStandings(groups, fixtures, rules, awards, liveQualifierIds)
   const currentMembers = calculateMemberStandings(members, selections, currentTeams)
   const currentByMember = new Map(currentMembers.map((row) => [row.member.id, row.total]))
   const sampleByMember = new Map(members.map((member) => [member.id, [] as number[]]))
@@ -46,7 +47,9 @@ export function calculateFinalProjections(
     const rng = createRandom(baseSeed + index * 2654435761)
     const simulatedFixtures = simulateFixtures(groups, fixtures, rng, mode, oddsProbs)
     const simulatedAwards = resolveAwards(groups, simulatedFixtures, rules, awards, rng)
-    const teamRows = calculateTeamStandings(groups, simulatedFixtures, rules, simulatedAwards)
+    const simBaseRows = calculateTeamStandings(groups, simulatedFixtures, baselineRules(), emptyAwards())
+    const simQualifiers = knockoutQualifiersFromStandings(groups, simBaseRows)
+    const teamRows = calculateTeamStandings(groups, simulatedFixtures, rules, simulatedAwards, simQualifiers)
     const projectedTeamRows =
       mode === 'historyDemo'
         ? teamRows.map((row) => ({
@@ -211,9 +214,8 @@ function resolveAwards(
   rng: () => number,
 ): AwardSettings {
   const rows = calculateTeamStandings(groups, fixtures, rules, emptyAwards())
-  const qualifiers = groups
-    .flatMap((group) => groupStandings(rows, group.code).slice(0, 2))
-    .map((row) => row.team)
+  const qualifierIds = knockoutQualifiersFromStandings(groups, rows)
+  const qualifiers = rows.filter((row) => qualifierIds.has(row.team.id)).map((row) => row.team)
   const fallback = groups.flatMap((group) => group.teams)
   const pool = qualifiers.length > 0 ? qualifiers : fallback
   const champion = awards.championTeamId || weightedTeam(pool, rng)

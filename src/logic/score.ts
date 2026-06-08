@@ -23,6 +23,7 @@ export function calculateTeamStandings(
   matches: Match[],
   rules: Rules,
   awards: AwardSettings = emptyAwards,
+  knockoutQualifierIds?: Set<string>,
 ): TeamStanding[] {
   const rows = new Map<string, MutableStanding>()
 
@@ -61,9 +62,11 @@ export function calculateTeamStandings(
       .filter((row): row is MutableStanding => Boolean(row))
       .sort(sortTeamStanding)
 
+    const useBracketQualifiers = Boolean(knockoutQualifierIds && knockoutQualifierIds.size > 0)
     ranked.forEach((row, index) => {
       row.rank = index + 1
-      if (groupIsComplete && index <= 1) row.fantasyPoints += rules.knockoutQualifiedBonus
+      const qualified = useBracketQualifiers ? knockoutQualifierIds!.has(row.team.id) : groupIsComplete && index <= 1
+      if (qualified) row.fantasyPoints += rules.knockoutQualifiedBonus
       if (groupIsComplete && row.played > 0 && row.losses === row.played) row.fantasyPoints += rules.allLossBonus
       row.fantasyPoints += awardPoints(row.team.id, awards, rules)
       if (row.team.id === 'japan') row.fantasyPoints *= rules.japanMultiplier
@@ -76,6 +79,24 @@ export function calculateTeamStandings(
 
 export function groupStandings(allStandings: TeamStanding[], groupCode: string): TeamStanding[] {
   return allStandings.filter((row) => row.team.group === groupCode).sort(sortTeamStanding)
+}
+
+// Top 2 of each group plus the 8 best third-placed teams, from a set of standings
+// where every group is complete. Used by the projection simulation (the live
+// board uses the authoritative ESPN Round of 32 set instead).
+export function knockoutQualifiersFromStandings(groups: Group[], teamStandings: TeamStanding[]): Set<string> {
+  const ids = new Set<string>()
+  const thirds: TeamStanding[] = []
+  for (const group of groups) {
+    const rows = groupStandings(teamStandings, group.code)
+    rows.slice(0, 2).forEach((row) => ids.add(row.team.id))
+    if (rows[2]) thirds.push(rows[2])
+  }
+  thirds
+    .sort(sortTeamStanding)
+    .slice(0, 8)
+    .forEach((row) => ids.add(row.team.id))
+  return ids
 }
 
 export function calculateMemberStandings(
@@ -125,8 +146,9 @@ export function calculateTeamBreakdown(
   matches: Match[],
   rules: Rules,
   awards: AwardSettings = emptyAwards,
+  knockoutQualifierIds?: Set<string>,
 ): TeamBreakdown {
-  const standings = calculateTeamStandings(groups, matches, rules, awards)
+  const standings = calculateTeamStandings(groups, matches, rules, awards, knockoutQualifierIds)
   const standing = standings.find((row) => row.team.id === team.id)
   const groupMatches = matches.filter((match) => match.group === team.group)
   const groupComplete = groupMatches.length > 0 && groupMatches.every(matchWasPlayed)
@@ -187,7 +209,11 @@ export function calculateTeamBreakdown(
   add('yellowCardsFourPenalty', '黄カード4枚', yellowQuads, rules.yellowCardsFourPenalty)
   add('redCardPenalty', 'レッドカード', redCards, rules.redCardPenalty)
   add('ownGoalPenalty', 'オウンゴール', ownGoals, rules.ownGoalPenalty)
-  if (groupComplete && standing && standing.rank >= 1 && standing.rank <= 2) {
+  const qualifiedForKnockout =
+    knockoutQualifierIds && knockoutQualifierIds.size > 0
+      ? knockoutQualifierIds.has(team.id)
+      : groupComplete && !!standing && standing.rank >= 1 && standing.rank <= 2
+  if (qualifiedForKnockout) {
     add('knockout', '決勝T進出', 1, rules.knockoutQualifiedBonus)
   }
   if (groupComplete && played > 0 && losses === played) add('allLoss', '全敗', 1, rules.allLossBonus)
