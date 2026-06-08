@@ -436,10 +436,85 @@
           animation: none;
         }
       }
+      .countdown {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 10px 18px;
+        margin: 0 0 18px;
+        padding: 12px 18px;
+        border-radius: 14px;
+        border: 1px solid rgba(255, 200, 84, 0.35);
+        background: linear-gradient(160deg, rgba(255, 228, 157, 0.16), rgba(255, 194, 61, 0.08));
+        box-shadow: 0 0 26px rgba(255, 200, 84, 0.12);
+      }
+      .cd-label {
+        font-weight: 800;
+        color: #ffe49d;
+        letter-spacing: 0.08em;
+      }
+      .cd-units {
+        display: flex;
+        align-items: flex-end;
+        gap: 8px;
+      }
+      .cd-unit {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        min-width: 50px;
+      }
+      .cd-unit b {
+        font-size: 1.9rem;
+        line-height: 1;
+        font-weight: 800;
+        color: #fff8df;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        text-shadow: 0 0 10px rgba(255, 200, 84, 0.45);
+      }
+      .cd-unit i {
+        font-size: 0.7rem;
+        font-style: normal;
+        color: rgba(238, 245, 255, 0.7);
+        margin-top: 4px;
+      }
+      .cd-sep {
+        font-size: 1.6rem;
+        font-weight: 800;
+        color: rgba(255, 200, 84, 0.6);
+        align-self: center;
+      }
+      .countdown.live {
+        border-color: rgba(120, 240, 180, 0.5);
+      }
+      .countdown.live .cd-label {
+        color: #7df0b4;
+      }
+      @media (max-width: 560px) {
+        .cd-unit b {
+          font-size: 1.45rem;
+        }
+        .cd-unit {
+          min-width: 42px;
+        }
+      }
     </style>
   </head>
   <body>
     <div class="page">
+      <div class="countdown" id="countdown" aria-live="polite" aria-label="開幕までのカウントダウン">
+        <span class="cd-label">開幕まで</span>
+        <div class="cd-units">
+          <span class="cd-unit"><b id="cd-days">--</b><i>日</i></span>
+          <span class="cd-sep">:</span>
+          <span class="cd-unit"><b id="cd-hours">--</b><i>時間</i></span>
+          <span class="cd-sep">:</span>
+          <span class="cd-unit"><b id="cd-mins">--</b><i>分</i></span>
+          <span class="cd-sep">:</span>
+          <span class="cd-unit"><b id="cd-secs">--</b><i>秒</i></span>
+        </div>
+      </div>
       <header class="top">
         <div class="brand">
           <span class="brand-mark">WC</span>
@@ -562,5 +637,40 @@
         This app is an independent fan-made draft board and is not affiliated with FIFA, World Cup organizers, LINE, or any football association.
       </p>
     </div>
+    <script>
+      (function () {
+        // 開幕戦キックオフ (JST)。日本時間 2026/6/12 04:00。
+        var target = new Date('2026-06-12T04:00:00+09:00').getTime()
+        var elDays = document.getElementById('cd-days')
+        var elHours = document.getElementById('cd-hours')
+        var elMins = document.getElementById('cd-mins')
+        var elSecs = document.getElementById('cd-secs')
+        var box = document.getElementById('countdown')
+        var label = box ? box.querySelector('.cd-label') : null
+        function pad(n) {
+          return (n < 10 ? '0' : '') + n
+        }
+        function tick() {
+          if (!elSecs) return
+          var diff = target - Date.now()
+          if (diff <= 0) {
+            if (box) box.classList.add('live')
+            if (label) label.textContent = '開催中！'
+            elDays.textContent = '0'
+            elHours.textContent = '00'
+            elMins.textContent = '00'
+            elSecs.textContent = '00'
+            return
+          }
+          var s = Math.floor(diff / 1000)
+          elDays.textContent = String(Math.floor(s / 86400))
+          elHours.textContent = pad(Math.floor((s % 86400) / 3600))
+          elMins.textContent = pad(Math.floor((s % 3600) / 60))
+          elSecs.textContent = pad(s % 60)
+        }
+        tick()
+        setInterval(tick, 1000)
+      })()
+    </script>
   </body>
 </html>
