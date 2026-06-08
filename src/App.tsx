@@ -6,6 +6,7 @@ import {
   Coffee,
   ExternalLink,
   Gauge,
+  HelpCircle,
   Lock,
   Medal,
   Network,
@@ -576,6 +577,10 @@ function App() {
           <Users size={15} />
           ルーム
         </a>
+        <a href="#help">
+          <HelpCircle size={15} />
+          使い方
+        </a>
         {boardUnlocked ? (
           <>
         <a href="#match-desk">
@@ -621,6 +626,7 @@ function App() {
           </summary>
           <RoomsPanel teamStandings={publicTeamStandings} />
         </details>
+        <HelpPanel />
         <PublicRulesPanel rules={publicRules} />
         {boardUnlocked ? (
           <>
@@ -1207,6 +1213,42 @@ function SupportBar() {
         </div>
       ) : null}
     </>
+  )
+}
+
+const helpSteps: Array<{ img: string; title: string; body: string }> = [
+  { img: 'step1.jpg', title: 'ルームを作る・参加する', body: '「ルーム対戦」を開いて、合言葉つきでルームを作成しコードを共有。仲間はコードと合言葉で参加します。' },
+  { img: 'step2.jpg', title: 'ニックネームで集まる', body: '名前を入れて最大8人まで参加。全員そろったら、ホストが「ピック開始」を押します。' },
+  { img: 'step3.jpg', title: '国を秘密に選ぶ', body: '各自が自分の端末で国を選んで提出。みんなの選択は公開まで見えません。' },
+  { img: 'step4.jpg', title: '公開＆ルーレット', body: 'ホストが公開。3人以上が同じ国を選ぶと、その全員がルーレットでランダムな国に変わります（1国は最大2人まで）。' },
+  { img: 'step5.jpg', title: '結果で自動採点', body: '本大会の試合結果で、持っている国にポイントが入り、順位はリアルタイムで更新。配点は「配点ルール」で確認できます。' },
+]
+
+function HelpPanel() {
+  return (
+    <details className="panel help-panel" id="help">
+      <summary className="rescue-summary">
+        <span>
+          <HelpCircle size={18} />
+          <strong>使い方</strong>
+        </span>
+        <em>はじめての方へ</em>
+      </summary>
+      <ol className="help-steps">
+        {helpSteps.map((step, index) => (
+          <li key={step.img} className="help-step">
+            <div className="help-step-media">
+              <img src={`${import.meta.env.BASE_URL}help/${step.img}`} alt="" loading="lazy" />
+              <span className="help-step-num">{index + 1}</span>
+            </div>
+            <div className="help-step-text">
+              <strong>{step.title}</strong>
+              <p>{step.body}</p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </details>
   )
 }
 
