@@ -941,6 +941,14 @@ function App() {
               />
             ))}
           </div>
+          <details className="manual-score">
+            <summary className="rescue-summary">
+              <span>
+                <Save size={18} />
+                <strong>手動採点</strong>
+              </span>
+              <em>自動取得の補正用</em>
+            </summary>
           <div className="match-controls">
             <select value={selectedMatch.id} onChange={(event) => setSelectedMatchId(event.target.value)}>
               {activeMatches.map((match) => (
@@ -1015,6 +1023,7 @@ function App() {
               リセット
             </button>
           </div>
+          </details>
         </section>
 
         <KnockoutBracket />
