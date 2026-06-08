@@ -194,6 +194,7 @@ function App() {
     void (async () => {
       let visitorId = ''
       try {
+        if (localStorage.getItem('wc-board-key')) return // 身内(合言葉解錠済みの端末)はカウントしない
         const recorded = sessionStorage.getItem('wc-visit-recorded') === '1'
         visitorId = localStorage.getItem('wc-visitor-id') || ''
         if (!visitorId) {
@@ -1332,9 +1333,6 @@ function BoardGatePanel({
 }
 
 function AnalyticsPanel({ summary, loaded }: { summary: AnalyticsSummary | null; loaded: boolean }) {
-  const daily = summary?.daily ?? []
-  const maxVisits = daily.reduce((max, row) => Math.max(max, row.visits), 0)
-
   return (
     <details className="panel analytics-panel" id="analytics-panel">
       <summary className="rescue-summary">
@@ -1350,6 +1348,7 @@ function AnalyticsPanel({ summary, loaded }: { summary: AnalyticsSummary | null;
         <p className="analytics-note">アクセス数を取得できませんでした。</p>
       ) : (
         <>
+          <p className="analytics-note">集計期間 2026/6/8〜決勝(7/19)・身内をのぞく</p>
           <div className="analytics-metrics">
             <article>
               <span>累計ユニーク</span>
@@ -1368,30 +1367,10 @@ function AnalyticsPanel({ summary, loaded }: { summary: AnalyticsSummary | null;
               <strong>{summary.today.visits.toLocaleString('ja-JP')}</strong>
             </article>
           </div>
-          <div className="analytics-trend" aria-label="直近30日のアクセス推移">
-            {daily.map((row) => {
-              const width = maxVisits > 0 && row.visits > 0 ? Math.max(6, (row.visits / maxVisits) * 100) : 0
-              return (
-                <div key={row.day} className="analytics-bar-row">
-                  <span>{formatAnalyticsDay(row.day)}</span>
-                  <div className="analytics-bar-track">
-                    <i style={{ width: `${width}%` }} />
-                  </div>
-                  <strong>{row.visits.toLocaleString('ja-JP')}</strong>
-                  <em>{row.uniques.toLocaleString('ja-JP')}人</em>
-                </div>
-              )
-            })}
-          </div>
         </>
       )}
     </details>
   )
-}
-
-function formatAnalyticsDay(day: string) {
-  const [, month, date] = day.split('-')
-  return month && date ? `${Number(month)}/${Number(date)}` : day
 }
 
 function KnockoutBracket() {

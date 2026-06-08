@@ -360,8 +360,10 @@ app.get('/api/analytics/summary', async (req, res) => {
     res.json({ ok: false })
     return
   }
-  const endDay = dayInTokyo()
-  const startDay = shiftIsoDay(endDay, -29)
+  // Fixed analytics window: 2026-06-08 through the final (2026-07-19).
+  const today = dayInTokyo()
+  const startDay = '2026-06-08'
+  const endDay = today < '2026-07-19' ? today : '2026-07-19'
   const { data, error } = await supabase.rpc('analytics_visit_summary', { start_day: startDay, end_day: endDay })
   if (error) {
     console.error('[analytics/summary]', error)
