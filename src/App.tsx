@@ -258,6 +258,8 @@ function App() {
   const [schedule, setSchedule] = useState<Record<string, string>>({})
   const [odds, setOdds] = useState<Record<string, Record<string, number>>>({})
   const [qualifierIds, setQualifierIds] = useState<Set<string>>(() => new Set())
+  const [bracket, setBracket] = useState<BracketRound[] | null>(null)
+  const [bracketLoaded, setBracketLoaded] = useState(false)
 
   useEffect(() => {
     return () => clearSlotTimer(slotTimerRef)
@@ -271,6 +273,8 @@ function App() {
       if (t.schedule) setSchedule(t.schedule)
       if (t.odds) setOdds(t.odds)
       setQualifierIds(knockoutTeamIds(t.bracket))
+      setBracket(t.bracket)
+      setBracketLoaded(true)
     })
     return () => {
       cancelled = true
@@ -296,6 +300,37 @@ function App() {
     return () => {
       cancelled = true
     }
+  }, [])
+
+  // Keep the open page live: refresh shared results + player stats every ~2.5min
+  // (our own server, cheap). Editable state (rules/awards/draft) is left alone.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void (async () => {
+        const shared = await fetchSharedState()
+        if (!shared) return
+        if (shared.results) setLiveFixtures((current) => applyResultMap(current, shared.results!))
+        if (shared.playerStats) setPlayerStats(shared.playerStats)
+      })()
+    }, 150000)
+    return () => window.clearInterval(id)
+  }, [])
+
+  // Refresh the ESPN tournament (schedule/odds/qualifiers/bracket) every ~6min so
+  // the bracket fills and the group->knockout switch happens without a reload.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      void (async () => {
+        const t = await fetchTournament(true)
+        if (Object.keys(t.schedule).length > 0) setSchedule(t.schedule)
+        if (Object.keys(t.odds).length > 0) setOdds(t.odds)
+        if (t.bracket) {
+          setBracket(t.bracket)
+          setQualifierIds(knockoutTeamIds(t.bracket))
+        }
+      })()
+    }, 360000)
+    return () => window.clearInterval(id)
   }, [])
 
   // Mirror mutable board state to this device so reloads keep edits even with
@@ -637,7 +672,7 @@ function App() {
         <PublicRulesPanel rules={publicRules} />
         {boardUnlocked ? (
           <>
-        {groupStageComplete ? <KnockoutBracket /> : null}
+        {groupStageComplete ? <KnockoutBracket rounds={bracket} loaded={bracketLoaded} /> : null}
         <details className="panel slot-panel rescue-slot-panel" id="draft-slot">
           <summary className="rescue-summary">
             <span>
@@ -1072,7 +1107,7 @@ function App() {
           </details>
         </section>
 
-        {!groupStageComplete ? <KnockoutBracket /> : null}
+        {!groupStageComplete ? <KnockoutBracket rounds={bracket} loaded={bracketLoaded} /> : null}
 
         <details className="panel rules-panel" id="rules-lab">
           <summary className="rescue-summary">
@@ -1386,22 +1421,7 @@ function AnalyticsPanel({ summary, loaded }: { summary: AnalyticsSummary | null;
   )
 }
 
-function KnockoutBracket() {
-  const [rounds, setRounds] = useState<BracketRound[] | null>(null)
-  const [loaded, setLoaded] = useState(false)
-
-  useEffect(() => {
-    let cancelled = false
-    fetchTournament().then((result) => {
-      if (cancelled) return
-      setRounds(result.bracket)
-      setLoaded(true)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [])
-
+function KnockoutBracket({ rounds, loaded }: { rounds: BracketRound[] | null; loaded: boolean }) {
   return (
     <section className="panel bracket-panel" id="bracket">
       <PanelTitle icon={<Network size={18} />} title="決勝トーナメント 組合せ" note="" />

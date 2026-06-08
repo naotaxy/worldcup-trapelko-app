@@ -77,8 +77,8 @@ let cache: Tournament | null = null
 
 // One pass over the whole tournament (group + knockout) from ESPN. Builds the
 // knockout bracket AND the real kickoff time for each of our group fixtures.
-export async function fetchTournament(): Promise<Tournament> {
-  if (cache) return cache
+export async function fetchTournament(force = false): Promise<Tournament> {
+  if (cache && !force) return cache
   const empty: Tournament = { bracket: null, schedule: {}, odds: {} }
   try {
     const dates: string[] = []
