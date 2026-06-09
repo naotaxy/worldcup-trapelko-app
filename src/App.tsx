@@ -1,10 +1,9 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import type { CSSProperties, MutableRefObject, ReactNode } from 'react'
+import type { MutableRefObject, ReactNode } from 'react'
 import {
   BadgeCheck,
   Bell,
   Coffee,
-  ExternalLink,
   Gauge,
   HelpCircle,
   Lock,
@@ -19,32 +18,25 @@ import {
   X,
 } from 'lucide-react'
 import './App.css'
+import { BoardView } from './components/BoardView'
 import { CountrySlot, type SlotCountry } from './components/CountrySlot'
 import { RoomsPanel } from './components/RoomsPanel'
-import { playerInfoJa } from './data/playerInfoJa'
-import { pdfCountryInfo, pdfSquads, type PdfPlayer } from './data/wcPdf'
 import {
   defaultRules,
   demoMembers as seedMembers,
   demoSelections,
-  fifaRanking,
   fixtures,
   groups,
   previewResults,
   teamNamesJa,
   teams,
-  worldCupHistory,
 } from './data/worldCup2026'
 import {
-  calculateMemberStandings,
-  calculateTeamBreakdown,
   calculateTeamStandings,
   flagUrl,
-  groupStandings,
   matchWasPlayed,
-  type TeamBreakdown,
 } from './logic/score'
-import { calculateFinalProjections, type MemberProjection, type ProjectionMode } from './logic/projection'
+import { type ProjectionMode } from './logic/projection'
 import type { AwardSettings, GroupCode, Match, MatchResult, Member, Rules, Team, TeamSelection } from './types'
 import {
   fetchAnalyticsSummary,
@@ -56,7 +48,7 @@ import {
   type AnalyticsSummary,
   type PlayerStat,
 } from './lib/api'
-import { fetchTournament, knockoutTeamIds, type BracketMatch, type BracketRound, type BracketTeam } from './lib/bracket'
+import { fetchTournament, knockoutTeamIds, type BracketRound } from './lib/bracket'
 import { loadLocalState, saveLocalState } from './lib/persistence'
 
 type NumericRuleKey = { [K in keyof Rules]-?: Rules[K] extends number ? K : never }[keyof Rules]
@@ -94,20 +86,6 @@ const ruleFields: Array<{ key: NumericRuleKey; label: string; min: number; max: 
 
 const maxTeamsPerMember = 8
 const maxOwnersPerTeam = 2
-
-const positionLabels: Record<PdfPlayer['pos'], string> = {
-  GK: 'GK',
-  DF: 'DF',
-  MF: 'MF',
-  FW: 'FW',
-}
-
-// Bridge the PDF's katakana squad names to Wikidata-sourced extras: katakana ->
-// { en (for ESPN stat lookup), photo, heightCm, dob }.
-const playerInfoByJa: Record<string, { en: string; photo?: string; heightCm?: number; dob?: string }> = {}
-for (const [en, v] of Object.entries(playerInfoJa)) {
-  if (v.ja && !playerInfoByJa[v.ja]) playerInfoByJa[v.ja] = { en, photo: v.photo, heightCm: v.heightCm, dob: v.dob }
-}
 
 const defaultAwards: AwardSettings = {
   championTeamId: '',
@@ -253,7 +231,6 @@ function App() {
   const [slotPhase, setSlotPhase] = useState<'idle' | 'spinning' | 'ready'>('idle')
   const [slotMessage, setSlotMessage] = useState('参加者を選んでスロットを回してください')
   const [resultSaveLabel, setResultSaveLabel] = useState('結果を保存')
-  const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
   const [playerStats, setPlayerStats] = useState<Record<string, PlayerStat>>({})
   const [schedule, setSchedule] = useState<Record<string, string>>({})
   const [odds, setOdds] = useState<Record<string, Record<string, number>>>({})
@@ -349,16 +326,6 @@ function App() {
     () => calculateTeamStandings(groups, liveFixtures, publicRules, awards, qualifierIds, odds),
     [awards, liveFixtures, qualifierIds, odds],
   )
-  // Once every group fixture is played, switch the focus to the knockout bracket
-  // (promote it to the top) and collapse the group tables.
-  const groupStageComplete = useMemo(
-    () => liveFixtures.length > 0 && liveFixtures.every((match) => match.result.home !== null && match.result.away !== null),
-    [liveFixtures],
-  )
-  const memberStandings = useMemo(
-    () => calculateMemberStandings(demoMembers, draftSelections, teamStandings),
-    [demoMembers, draftSelections, teamStandings],
-  )
   const oddsProbs = useMemo(() => {
     const out: Record<string, { home: number; draw: number; away: number }> = {}
     for (const fixture of fixtures) {
@@ -375,11 +342,6 @@ function App() {
     }
     return out
   }, [odds])
-  const memberProjections = useMemo(
-    () => calculateFinalProjections(demoMembers, draftSelections, groups, liveFixtures, rules, awards, projectionMode, oddsProbs, qualifierIds, odds),
-    [awards, demoMembers, draftSelections, liveFixtures, oddsProbs, projectionMode, rules, qualifierIds, odds],
-  )
-  const activeRows = useMemo(() => groupStandings(teamStandings, activeGroup), [teamStandings, activeGroup])
   const activeMatches = useMemo(() => liveFixtures.filter((match) => match.group === activeGroup), [liveFixtures, activeGroup])
   const selectedMatch = useMemo<Match>(
     () => liveFixtures.find((match) => match.id === selectedMatchId) || activeMatches[0] || liveFixtures[0] || (fixtures[0] as Match),
@@ -666,13 +628,27 @@ function App() {
             </span>
             <em>みんなで遊ぶ</em>
           </summary>
-          <RoomsPanel teamStandings={publicTeamStandings} />
+          <RoomsPanel
+            teamStandings={publicTeamStandings}
+            rules={publicRules}
+            awards={awards}
+            liveFixtures={liveFixtures}
+            groups={groups}
+            qualifierIds={qualifierIds}
+            odds={odds}
+            oddsProbs={oddsProbs}
+            schedule={schedule}
+            playerStats={playerStats}
+            bracket={bracket}
+            bracketLoaded={bracketLoaded}
+            projectionMode={projectionMode}
+            onProjectionMode={setProjectionMode}
+          />
         </details>
         <HelpPanel />
         <PublicRulesPanel rules={publicRules} />
         {boardUnlocked ? (
           <>
-        {groupStageComplete ? <KnockoutBracket rounds={bracket} loaded={bracketLoaded} /> : null}
         <details className="panel slot-panel rescue-slot-panel" id="draft-slot">
           <summary className="rescue-summary">
             <span>
@@ -903,104 +879,29 @@ function App() {
           </div>
         </details>
 
-        <details className="panel group-panel" id="group-standings" open={groupStageComplete ? undefined : true}>
-          <summary className="rescue-summary">
-            <span>
-              <Trophy size={18} />
-              <strong>グループ{activeGroup} 順位</strong>
-            </span>
-            <em>{groupStageComplete ? '予選終了・タップで確認' : '国をタップで詳細'}</em>
-          </summary>
-          <nav className="group-tabs" aria-label="groups">
-            {groups.map((group) => (
-              <button
-                key={group.code}
-                type="button"
-                className={group.code === activeGroup ? 'active' : ''}
-                style={{ '--group-color': group.color } as CSSProperties}
-                onClick={() => {
-                  setActiveGroup(group.code)
-                  setSelectedMatchId(`${group.code}-1`)
-                }}
-              >
-                {group.code}
-              </button>
-            ))}
-          </nav>
-          <div className="standings-list">
-            {activeRows.map((row, index) => (
-              <button
-                type="button"
-                key={row.team.id}
-                className="standings-row"
-                onClick={() => setSelectedTeamId(row.team.id)}
-                title={`${teamNameJa(row.team.id)}の詳細`}
-              >
-                <span className="standings-rank">{index + 1}</span>
-                <img src={flagUrl(row.team.flag)} alt="" />
-                <div className="standings-main">
-                  <strong>{teamNameJa(row.team.id)}</strong>
-                  <span>{teamOwnersByTeam.get(row.team.id) || '持ち主未定'}</span>
-                </div>
-                <div className="standings-stats">
-                  <span>
-                    {row.wins}勝{row.draws}分{row.losses}敗
-                  </span>
-                  <span>得失{formatSigned(row.goalDifference)}</span>
-                </div>
-                <strong className="standings-pt">
-                  {row.fantasyPoints}
-                  <em>pt</em>
-                </strong>
-              </button>
-            ))}
-          </div>
-        </details>
-
-        <section className="panel leaderboard-panel" id="member-ranking">
-          <PanelTitle icon={<Medal size={18} />} title="参加者ランキング" note="総合ポイント" />
-          <div className="leader-list">
-            {memberStandings.map((row) => (
-              <article key={row.member.id} className="leader-row">
-                <div className="member-avatar" style={{ '--avatar-color': row.member.accent } as CSSProperties}>
-                  {row.member.avatar}
-                </div>
-                <div className="leader-main">
-                  <div className="leader-name">
-                    <span>{row.rank}</span>
-                    {row.member.name}
-                  </div>
-                  <div className="team-pills">
-                    {row.teams.slice(0, maxTeamsPerMember).map((team) => (
-                      <button
-                        key={team.team.id}
-                        type="button"
-                        className="team-pill team-pill-button"
-                        onClick={() => setSelectedTeamId(team.team.id)}
-                        title={`${teamNameJa(team.team.id)}の内訳を見る`}
-                      >
-                        <img src={flagUrl(team.team.flag)} alt="" />
-                        {teamNameJa(team.team.id)}
-                        <em className="pill-group">{team.team.group}</em>
-                        <strong>{team.fantasyPoints}</strong>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-                <strong>{row.total}</strong>
-              </article>
-            ))}
-          </div>
-        </section>
-
-        <section className="panel projection-panel" id="projection-panel">
-          <PanelTitle
-            icon={<Gauge size={18} />}
-            title="最終予想グラフ"
-            note={projectionMode === 'historyDemo' ? '過去デモ / 平均値 / 中央値' : '標準 / 平均値 / 中央値'}
-          />
-          <ProjectionGraph projections={memberProjections} mode={projectionMode} onModeChange={setProjectionMode} />
-        </section>
+        <BoardView
+          members={demoMembers}
+          selections={draftSelections}
+          rules={rules}
+          awards={awards}
+          teamStandings={teamStandings}
+          liveFixtures={liveFixtures}
+          groups={groups}
+          qualifierIds={qualifierIds}
+          odds={odds}
+          oddsProbs={oddsProbs}
+          schedule={schedule}
+          playerStats={playerStats}
+          bracket={bracket}
+          bracketLoaded={bracketLoaded}
+          projectionMode={projectionMode}
+          onProjectionMode={setProjectionMode}
+          activeGroup={activeGroup}
+          onActiveGroup={(group) => {
+            setActiveGroup(group)
+            setSelectedMatchId(`${group}-1`)
+          }}
+        />
 
         <section className="panel match-panel" id="match-desk">
           <PanelTitle icon={<Bell size={18} />} title="試合・結果" note="" />
@@ -1107,8 +1008,6 @@ function App() {
           </details>
         </section>
 
-        {!groupStageComplete ? <KnockoutBracket rounds={bracket} loaded={bracketLoaded} /> : null}
-
         <details className="panel rules-panel" id="rules-lab">
           <summary className="rescue-summary">
             <span>
@@ -1170,44 +1069,6 @@ function App() {
       </section>
 
       <SupportBar />
-
-      {selectedTeamId
-        ? (() => {
-            const team = teams.find((entry) => entry.id === selectedTeamId)
-            if (!team) return null
-            const unplayed = liveFixtures
-              .filter((match) => match.homeTeamId === team.id || match.awayTeamId === team.id)
-              .filter((match) => !(match.result.home !== null && match.result.away !== null))
-              .sort((a, b) => a.date.localeCompare(b.date))
-            const upcoming = unplayed[0]
-            const nextMatch = upcoming
-              ? {
-                  date: upcoming.date,
-                  kickoff: schedule[upcoming.id],
-                  opponentName: teamNameJa(upcoming.homeTeamId === team.id ? upcoming.awayTeamId : upcoming.homeTeamId),
-                  home: upcoming.homeTeamId === team.id,
-                  winOdds: odds[upcoming.id]?.[team.id],
-                  drawOdds: odds[upcoming.id]?.draw,
-                }
-              : null
-            return (
-              <TeamDetailModal
-                team={team}
-                breakdown={calculateTeamBreakdown(team, groups, liveFixtures, rules, awards, qualifierIds, odds)}
-                owners={teamOwnersByTeam.get(team.id) || '未決定'}
-                players={pdfSquads[team.id] || []}
-                playerStats={playerStats}
-                fifaRank={fifaRanking[team.id]}
-                wcHistory={worldCupHistory[team.id]}
-                summary={pdfCountryInfo[team.id]?.summary}
-                coach={pdfCountryInfo[team.id]?.coach}
-                remaining={unplayed.length}
-                nextMatch={nextMatch}
-                onClose={() => setSelectedTeamId(null)}
-              />
-            )
-          })()
-        : null}
     </main>
   )
 }
@@ -1421,51 +1282,6 @@ function AnalyticsPanel({ summary, loaded }: { summary: AnalyticsSummary | null;
   )
 }
 
-function KnockoutBracket({ rounds, loaded }: { rounds: BracketRound[] | null; loaded: boolean }) {
-  return (
-    <section className="panel bracket-panel" id="bracket">
-      <PanelTitle icon={<Network size={18} />} title="決勝トーナメント 組合せ" note="" />
-      {!loaded ? (
-        <p className="bracket-note">読み込み中…</p>
-      ) : !rounds ? (
-        <p className="bracket-note">組合せは予選終了後（決勝トーナメント確定後）に自動表示されます。</p>
-      ) : (
-        <div className="bracket-scroll">
-          {rounds.map((round) => (
-            <div key={round.slug} className="bracket-round">
-              <h4>{round.label}</h4>
-              {round.matches.map((match) => (
-                <BracketCard key={match.id} match={match} />
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
-    </section>
-  )
-}
-
-function BracketCard({ match }: { match: BracketMatch }) {
-  const when = formatJst(match.date)
-  return (
-    <div className={match.status === 'post' ? 'bracket-card done' : 'bracket-card'}>
-      {when ? <div className="bracket-date">{when}</div> : null}
-      <BracketTeamRow team={match.home} />
-      <BracketTeamRow team={match.away} />
-    </div>
-  )
-}
-
-function BracketTeamRow({ team }: { team: BracketTeam }) {
-  return (
-    <div className={team.winner ? 'bracket-team winner' : 'bracket-team'}>
-      {team.flag ? <img src={team.flag} alt="" /> : <span className="bracket-tbd" />}
-      <span className="bracket-team-name">{team.name}</span>
-      <strong>{team.score ?? ''}</strong>
-    </div>
-  )
-}
-
 function PanelTitle({ icon, title, note }: { icon: ReactNode; title: string; note?: string }) {
   return (
     <div className="panel-title">
@@ -1576,275 +1392,6 @@ function AwardSelect({ label, value, onChange }: { label: string; value: string;
   )
 }
 
-function ProjectionGraph({
-  projections,
-  mode,
-  onModeChange,
-}: {
-  projections: MemberProjection[]
-  mode: ProjectionMode
-  onModeChange: (mode: ProjectionMode) => void
-}) {
-  const maxValue = Math.max(1, ...projections.map((projection) => projection.high))
-  const leaderAverage = projections[0]?.average || 0
-
-  return (
-    <div className="projection-list">
-      <div className="projection-mode-controls">
-        <button type="button" className={mode === 'standard' ? 'active' : ''} onClick={() => onModeChange('standard')}>
-          標準予想
-        </button>
-        <button type="button" className={mode === 'oddsBased' ? 'active' : ''} onClick={() => onModeChange('oddsBased')}>
-          オッズ予想
-        </button>
-        <button type="button" className={mode === 'historyDemo' ? 'active' : ''} onClick={() => onModeChange('historyDemo')}>
-          過去デモ予想
-        </button>
-        <p>
-          {mode === 'oddsBased'
-            ? 'ブックメーカーのオッズ(勝/分/負の確率)で残り試合を計算中。オッズ未提供の試合はシード強度で補完。'
-            : mode === 'historyDemo'
-              ? '前回Excelルールの点差感を参考に、全48カ国へ仮の上振れ/下振れポイントを入れて計算中。'
-              : '入力済みの試合結果を固定し、残り試合と大会ボーナスをシード強度ベースで計算中。'}
-        </p>
-      </div>
-      {projections.map((projection) => {
-        const averageWidth = `${normalizeProjectionValue(projection.average, maxValue)}%`
-        const medianLeft = `${normalizeProjectionValue(projection.median, maxValue)}%`
-        const lowLeft = `${normalizeProjectionValue(projection.low, maxValue)}%`
-        const rangeWidth = `${Math.max(1, normalizeProjectionValue(projection.high - projection.low, maxValue))}%`
-        const gap = roundPoint(projection.average - leaderAverage)
-
-        return (
-          <article key={projection.member.id} className="projection-row">
-            <div className="projection-head">
-              <div className="member-avatar" style={{ '--avatar-color': projection.member.accent } as CSSProperties}>
-                {projection.member.avatar}
-              </div>
-              <div>
-                <strong>
-                  {projection.averageRank}. {projection.member.name}
-                </strong>
-                <span>
-                  現在 {projection.current} / 予想差 {gap === 0 ? '首位' : gap}
-                </span>
-              </div>
-            </div>
-            <div className="projection-chart">
-              <div className="projection-track">
-                <div className="projection-range" style={{ left: lowLeft, width: rangeWidth }} />
-                <div className="projection-average" style={{ width: averageWidth }} />
-                <div className="projection-median" style={{ left: medianLeft }} />
-              </div>
-              <div className="projection-values">
-                <span>平均 {projection.average}</span>
-                <strong>中央値 {projection.median}</strong>
-                <span>
-                  10-90% {projection.low}-{projection.high}
-                </span>
-              </div>
-            </div>
-          </article>
-        )
-      })}
-      <div className="projection-note">
-        <span>平均</span>
-        <strong>中央値</strong>
-        <em>
-          薄い帯は10-90%レンジ。
-          {mode === 'historyDemo'
-            ? '過去デモ予想は全チームへ仮の上振れ/下振れを入れています。'
-            : mode === 'oddsBased'
-              ? 'オッズ予想はブックメーカーの勝率で残り試合を引いています。'
-              : '標準予想は未入力の試合と大会ボーナスだけを推定します。'}
-          900回シミュレーションです。
-        </em>
-      </div>
-    </div>
-  )
-}
-
-
-const confederationJa: Record<string, string> = {
-  UEFA: '欧州 (UEFA)',
-  CONMEBOL: '南米 (CONMEBOL)',
-  CAF: 'アフリカ (CAF)',
-  AFC: 'アジア (AFC)',
-  Concacaf: '北中米カリブ (Concacaf)',
-  OFC: 'オセアニア (OFC)',
-}
-
-function normName(s: string): string {
-  return (s || '')
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/[^a-z0-9]/g, '')
-}
-
-function TeamDetailModal({
-  team,
-  breakdown,
-  owners,
-  players,
-  playerStats,
-  fifaRank,
-  wcHistory,
-  summary,
-  coach,
-  remaining,
-  nextMatch,
-  onClose,
-}: {
-  team: Team
-  breakdown: TeamBreakdown
-  owners: string
-  players: PdfPlayer[]
-  playerStats: Record<string, PlayerStat>
-  fifaRank?: number
-  wcHistory?: string
-  summary?: string
-  coach?: string
-  remaining: number
-  nextMatch: {
-    date: string
-    kickoff?: string
-    opponentName: string
-    home: boolean
-    winOdds?: number
-    drawOdds?: number
-  } | null
-  onClose: () => void
-}) {
-  const standing = breakdown.standing
-  const maxAbs = Math.max(1, ...breakdown.components.map((component) => Math.abs(component.points)))
-  const grouped = {
-    GK: players.filter((player) => player.pos === 'GK'),
-    DF: players.filter((player) => player.pos === 'DF'),
-    MF: players.filter((player) => player.pos === 'MF'),
-    FW: players.filter((player) => player.pos === 'FW'),
-  }
-  const { hatTricks, yellowCards, redCards, ownGoals } = breakdown.tallies
-
-  return (
-    <div className="team-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
-      <div className="team-modal" onClick={(event) => event.stopPropagation()}>
-        <header className="team-modal-head">
-          <div>
-            <img src={flagUrl(team.flag)} alt={`${teamNameJa(team.id)}の国旗`} />
-            <div>
-              <strong>{teamNameJa(team.id)}</strong>
-              <span>
-                {confederationJa[team.confederation] || team.confederation} / グループ{team.group} / 第{team.seed}シード
-                {fifaRank ? ` / FIFAランキング ${fifaRank}位` : ''}
-                {coach ? ` / 監督 ${coach}` : ''}
-              </span>
-            </div>
-          </div>
-          <button type="button" className="icon-button" onClick={onClose} aria-label="閉じる">
-            <X size={18} />
-          </button>
-        </header>
-
-        <div className="team-modal-score">
-          <span>現在の総ポイント</span>
-          <strong>{breakdown.total}</strong>
-          <em>保有: {owners}</em>
-        </div>
-
-        {wcHistory ? <div className="team-modal-history">過去W杯: {wcHistory}</div> : null}
-        {summary ? <p className="team-modal-summary">{summary}</p> : null}
-
-        {standing ? (
-          <div className="team-modal-standing">
-            <span>{standing.played}試</span>
-            <span>{standing.wins}勝</span>
-            <span>{standing.draws}分</span>
-            <span>{standing.losses}敗</span>
-            <span>得失{formatSigned(standing.goalDifference)}</span>
-            <span>勝点{standing.fifaPoints}</span>
-          </div>
-        ) : null}
-
-        <div className="team-modal-schedule">
-          <span>残り試合 {remaining}</span>
-          {nextMatch ? (
-            <span>
-              次戦 {nextMatch.kickoff ? formatJst(nextMatch.kickoff) : formatDateJa(nextMatch.date)}{' '}
-              {nextMatch.home ? 'vs' : '@'} {nextMatch.opponentName}
-            </span>
-          ) : (
-            <span>予選日程は終了</span>
-          )}
-          {nextMatch?.winOdds ? (
-            <span>
-              勝ち {nextMatch.winOdds.toFixed(2)}倍{nextMatch.drawOdds ? ` / 引分 ${nextMatch.drawOdds.toFixed(2)}倍` : ''}
-            </span>
-          ) : null}
-        </div>
-
-        <div className="team-modal-tallies" aria-label="自動取得イベント実績">
-          <span>ハットトリック {hatTricks}</span>
-          <span>黄 {yellowCards}</span>
-          <span className={redCards ? 'danger' : ''}>赤 {redCards}</span>
-          <span className={ownGoals ? 'danger' : ''}>OG {ownGoals}</span>
-        </div>
-
-        <section className="team-modal-breakdown">
-          <h4>ポイント内訳</h4>
-          {breakdown.components.length > 0 ? (
-            breakdown.components.map((component) => (
-              <div key={component.key} className="breakdown-row">
-                <span className="breakdown-label">
-                  {component.label}
-                  {component.count > 1 ? ` ×${component.count}` : ''}
-                </span>
-                <div className="breakdown-bar-track">
-                  <div
-                    className={component.points < 0 ? 'breakdown-bar negative' : 'breakdown-bar'}
-                    style={{ width: `${(Math.abs(component.points) / maxAbs) * 100}%` }}
-                  />
-                </div>
-                <strong className={component.points < 0 ? 'negative' : ''}>
-                  {component.points > 0 ? `+${component.points}` : component.points}
-                </strong>
-              </div>
-            ))
-          ) : (
-            <p className="breakdown-empty">まだ加点なし（試合前）</p>
-          )}
-        </section>
-
-        <section className="team-modal-squad">
-          <h4>代表メンバー ({players.length}人)</h4>
-          {(Object.keys(grouped) as PdfPlayer['pos'][]).map((position) =>
-            grouped[position].length > 0 ? (
-              <div key={position} className="team-modal-squad-group">
-                <span className="squad-pos-label">{positionLabels[position]}</span>
-                <div className="player-chip-grid">
-                  {grouped[position].map((player) => (
-                    <PlayerChip key={`${player.name}-${player.club ?? ''}`} player={player} playerStats={playerStats} />
-                  ))}
-                </div>
-              </div>
-            ) : null,
-          )}
-          <a
-            className="team-modal-source gekisaka"
-            href={`https://www.google.com/search?q=${encodeURIComponent(`site:gekisaka.jp ${teamNameJa(team.id)} 代表`)}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            ゲキサカで{teamNameJa(team.id)}代表の記事を読む
-            <ExternalLink size={12} />
-          </a>
-          <span className="team-modal-credit">選手名簿・監督・解説: 配布資料 / 写真・年齢・身長: Wikidata・Wikimedia Commons</span>
-        </section>
-      </div>
-    </div>
-  )
-}
-
 function teamName(teamId: string): string {
   return teamNameJa(teamId)
 }
@@ -1923,47 +1470,6 @@ function clearSlotTimer(timerRef: MutableRefObject<number | null>) {
   timerRef.current = null
 }
 
-function playerAge(dob: string): number | null {
-  const birth = new Date(dob)
-  if (Number.isNaN(birth.getTime())) return null
-  const now = new Date()
-  let age = now.getFullYear() - birth.getFullYear()
-  const monthDiff = now.getMonth() - birth.getMonth()
-  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) age -= 1
-  return age
-}
-
-function PlayerChip({ player, playerStats }: { player: PdfPlayer; playerStats: Record<string, PlayerStat> }) {
-  // player.name is the PDF katakana name; bridge to Wikidata extras (photo/age/
-  // height) and to ESPN per-player stats (via the English name) where available.
-  const info = playerInfoByJa[player.name]
-  const age = info?.dob ? playerAge(info.dob) : null
-  const bio = [age != null ? `${age}歳` : null, info?.heightCm ? `${info.heightCm}cm` : null, player.club || null]
-    .filter(Boolean)
-    .join(' / ')
-  const stat = info?.en ? playerStats[normName(info.en)] : undefined
-  const statParts: string[] = []
-  if (stat?.goals) statParts.push(`得点${stat.goals}`)
-  if (stat?.own) statParts.push(`OG${stat.own}`)
-  if (stat?.yellow) statParts.push(`黄${stat.yellow}`)
-  if (stat?.red) statParts.push(`赤${stat.red}`)
-  const statLine = statParts.join('・')
-  return (
-    <div className="player-chip">
-      {info?.photo ? (
-        <img src={info.photo} alt={player.name} loading="lazy" />
-      ) : (
-        <span className="player-photo-fallback">{player.name.slice(0, 1)}</span>
-      )}
-      <div>
-        <strong>{player.name}</strong>
-        {bio ? <span>{bio}</span> : null}
-        {statLine ? <span className="player-stat">{statLine}</span> : null}
-      </div>
-    </div>
-  )
-}
-
 function isMatchWinner(match: Match, side: 'home' | 'away'): boolean {
   if (!matchWasPlayed(match) || match.result.home === null || match.result.away === null) return false
   if (side === 'home') return match.result.home > match.result.away || Boolean(match.result.homePenaltyWin)
@@ -1991,19 +1497,6 @@ function formatJst(iso?: string): string {
       minute: '2-digit',
     }).format(parsed) + ' JST'
   )
-}
-
-function formatSigned(value: number): string {
-  if (value > 0) return `+${value}`
-  return String(value)
-}
-
-function normalizeProjectionValue(value: number, maxValue: number): number {
-  return Math.min(100, Math.max(0, (value / maxValue) * 100))
-}
-
-function roundPoint(value: number): number {
-  return Math.round(value * 10) / 10
 }
 
 function applyResultMap(base: Match[], results: Record<string, MatchResult>): Match[] {

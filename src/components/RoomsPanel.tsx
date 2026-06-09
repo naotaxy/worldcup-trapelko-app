@@ -1,8 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Check, Copy, Crown, LogOut, Plus, Shuffle, Users } from 'lucide-react'
-import { groups, teamNamesJa, teams } from '../data/worldCup2026'
-import { calculateMemberStandings, flagUrl } from '../logic/score'
-import type { Member, TeamSelection, TeamStanding } from '../types'
+import { groups, teamNamesJa } from '../data/worldCup2026'
+import { flagUrl } from '../logic/score'
+import type { MatchProb, ProjectionMode } from '../logic/projection'
+import type { AwardSettings, Group, Match, Member, Rules, TeamSelection, TeamStanding } from '../types'
+import type { PlayerStat } from '../lib/api'
+import type { BracketRound } from '../lib/bracket'
+import { BoardView } from './BoardView'
 import {
   createRoom,
   getRoom,
@@ -17,15 +21,42 @@ import {
 } from '../lib/roomsApi'
 
 const nameJa = (id: string) => teamNamesJa[id] || id
-const teamById = new Map(teams.map((team) => [team.id, team]))
-const flagFor = (id: string) => {
-  const team = teamById.get(id)
-  return team ? flagUrl(team.flag) : ''
-}
 
 type EntryTab = 'create' | 'join'
 
-export function RoomsPanel({ teamStandings }: { teamStandings: TeamStanding[] }) {
+type RoomsPanelProps = {
+  teamStandings: TeamStanding[]
+  rules: Rules
+  awards: AwardSettings
+  liveFixtures: Match[]
+  groups: Group[]
+  qualifierIds: Set<string>
+  odds: Record<string, Record<string, number>>
+  oddsProbs: Record<string, MatchProb>
+  schedule: Record<string, string>
+  playerStats: Record<string, PlayerStat>
+  bracket: BracketRound[] | null
+  bracketLoaded: boolean
+  projectionMode: ProjectionMode
+  onProjectionMode: (mode: ProjectionMode) => void
+}
+
+export function RoomsPanel({
+  teamStandings,
+  rules,
+  awards,
+  liveFixtures,
+  groups: boardGroups,
+  qualifierIds,
+  odds,
+  oddsProbs,
+  schedule,
+  playerStats,
+  bracket,
+  bracketLoaded,
+  projectionMode,
+  onProjectionMode,
+}: RoomsPanelProps) {
   const [session, setSession] = useState<RoomSession | null>(() => loadRoomSession())
   const [room, setRoom] = useState<RoomState | null>(null)
   const [busy, setBusy] = useState(false)
@@ -138,7 +169,25 @@ export function RoomsPanel({ teamStandings }: { teamStandings: TeamStanding[] })
         />
       ) : null}
 
-      {room.status === 'revealed' ? <RoomReveal room={room} teamStandings={teamStandings} /> : null}
+      {room.status === 'revealed' ? (
+        <RoomReveal
+          room={room}
+          teamStandings={teamStandings}
+          rules={rules}
+          awards={awards}
+          liveFixtures={liveFixtures}
+          groups={boardGroups}
+          qualifierIds={qualifierIds}
+          odds={odds}
+          oddsProbs={oddsProbs}
+          schedule={schedule}
+          playerStats={playerStats}
+          bracket={bracket}
+          bracketLoaded={bracketLoaded}
+          projectionMode={projectionMode}
+          onProjectionMode={onProjectionMode}
+        />
+      ) : null}
     </div>
   )
 }
@@ -419,32 +468,58 @@ function RoomPicking({
   )
 }
 
-function RoomReveal({ room, teamStandings }: { room: RoomState; teamStandings: TeamStanding[] }) {
+function RoomReveal({
+  room,
+  teamStandings,
+  rules,
+  awards,
+  liveFixtures,
+  groups,
+  qualifierIds,
+  odds,
+  oddsProbs,
+  schedule,
+  playerStats,
+  bracket,
+  bracketLoaded,
+  projectionMode,
+  onProjectionMode,
+}: {
+  room: RoomState
+  teamStandings: TeamStanding[]
+  rules: Rules
+  awards: AwardSettings
+  liveFixtures: Match[]
+  groups: Group[]
+  qualifierIds: Set<string>
+  odds: Record<string, Record<string, number>>
+  oddsProbs: Record<string, MatchProb>
+  schedule: Record<string, string>
+  playerStats: Record<string, PlayerStat>
+  bracket: BracketRound[] | null
+  bracketLoaded: boolean
+  projectionMode: ProjectionMode
+  onProjectionMode: (mode: ProjectionMode) => void
+}) {
   const assignments = useMemo(() => room.assignments || [], [room.assignments])
   const roulette = assignments.filter((a) => a.source === 'roulette')
-
-  const standings = useMemo(() => {
-    const members: Member[] = room.players.map((p) => ({
-      id: p.id,
-      name: p.nickname,
-      lineName: p.nickname,
-      avatar: p.avatar,
-      accent: p.accent,
-    }))
-    const selections: TeamSelection[] = assignments.map((a) => ({ memberId: a.playerId, teamId: a.teamId }))
-    return calculateMemberStandings(members, selections, teamStandings)
-  }, [room.players, assignments, teamStandings])
+  const members = useMemo<Member[]>(
+    () =>
+      room.players.map((p) => ({
+        id: p.id,
+        name: p.nickname,
+        lineName: p.nickname,
+        avatar: p.avatar,
+        accent: p.accent,
+      })),
+    [room.players],
+  )
+  const selections = useMemo<TeamSelection[]>(
+    () => assignments.map((a) => ({ memberId: a.playerId, teamId: a.teamId })),
+    [assignments],
+  )
 
   const nicknameOf = (playerId: string) => room.players.find((p) => p.id === playerId)?.nickname || '—'
-  const teamsByPlayer = useMemo(() => {
-    const map = new Map<string, typeof assignments>()
-    for (const a of assignments) {
-      const list = map.get(a.playerId) || []
-      list.push(a)
-      map.set(a.playerId, list)
-    }
-    return map
-  }, [assignments])
 
   return (
     <div className="room-revealed">
@@ -468,48 +543,25 @@ function RoomReveal({ room, teamStandings }: { room: RoomState; teamStandings: T
         <p className="room-step">被り3人以上はなし。全員が選んだ国を確保しました。</p>
       )}
 
-      <div className="room-standings">
-        <h4>ルーム順位 (現在の試合結果で計算)</h4>
-        <ol>
-          {standings.map((row) => (
-            <li key={row.member.id}>
-              <span className="room-rank">{row.rank}</span>
-              <span className="room-avatar small" style={{ background: row.member.accent }}>
-                {row.member.avatar}
-              </span>
-              <span className="room-standing-name">{row.member.name}</span>
-              <span className="room-standing-pts">{row.total} pt</span>
-            </li>
-          ))}
-        </ol>
-      </div>
-
-      <div className="room-rosters">
-        {room.players.map((p) => {
-          const owned = teamsByPlayer.get(p.id) || []
-          return (
-            <div key={p.id} className="room-roster">
-              <span className="room-roster-name">
-                <span className="room-avatar small" style={{ background: p.accent }}>
-                  {p.avatar}
-                </span>
-                {p.nickname}
-              </span>
-              <div className="room-roster-flags">
-                {owned.map((a) => (
-                  <img
-                    key={a.teamId}
-                    src={flagFor(a.teamId)}
-                    alt={nameJa(a.teamId)}
-                    title={`${nameJa(a.teamId)}${a.source === 'roulette' ? ' (ルーレット)' : ''}`}
-                    className={a.source === 'roulette' ? 'roulette-won' : ''}
-                  />
-                ))}
-              </div>
-            </div>
-          )
-        })}
-      </div>
+      <BoardView
+        members={members}
+        selections={selections}
+        rules={rules}
+        awards={awards}
+        teamStandings={teamStandings}
+        liveFixtures={liveFixtures}
+        groups={groups}
+        qualifierIds={qualifierIds}
+        odds={odds}
+        oddsProbs={oddsProbs}
+        schedule={schedule}
+        playerStats={playerStats}
+        bracket={bracket}
+        bracketLoaded={bracketLoaded}
+        projectionMode={projectionMode}
+        onProjectionMode={onProjectionMode}
+        isPublic
+      />
     </div>
   )
 }
