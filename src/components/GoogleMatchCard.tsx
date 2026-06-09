@@ -1,0 +1,115 @@
+import { teamNamesJa, teams } from '../data/worldCup2026'
+import { flagUrl, matchWasPlayed } from '../logic/score'
+import type { Match, Team } from '../types'
+
+export function GoogleMatchCard({
+  match,
+  selected,
+  onSelect,
+  kickoff,
+  homeOwner,
+  awayOwner,
+  homeOdds,
+  awayOdds,
+  drawOdds,
+}: {
+  match: Match
+  selected: boolean
+  onSelect: () => void
+  kickoff?: string
+  homeOwner?: string
+  awayOwner?: string
+  homeOdds?: number
+  awayOdds?: number
+  drawOdds?: number
+}) {
+  const homeTeam = teams.find((team) => team.id === match.homeTeamId) || teams[0]
+  const awayTeam = teams.find((team) => team.id === match.awayTeamId) || teams[0]
+  const played = matchWasPlayed(match)
+  const hasFullOdds = homeOdds != null && drawOdds != null && awayOdds != null
+
+  return (
+    <button type="button" className={selected ? 'google-match-card active' : 'google-match-card'} onClick={onSelect}>
+      <div className="google-match-meta">
+        <span>{kickoff ? formatJst(kickoff) : formatDateJa(match.date)}</span>
+        <strong>グループ{match.group}</strong>
+        <em>{played ? '終了' : '試合前'}</em>
+      </div>
+      {hasFullOdds ? (
+        <div className="google-match-odds-row" aria-label="ブックメーカーオッズ">
+          <span>ホーム {homeOdds.toFixed(2)}倍</span>
+          <span>引分 {drawOdds.toFixed(2)}倍</span>
+          <span>アウェイ {awayOdds.toFixed(2)}倍</span>
+        </div>
+      ) : null}
+      <TeamScoreLine team={homeTeam} owner={homeOwner} odds={homeOdds} score={match.result.home} winner={played && isMatchWinner(match, 'home')} />
+      <TeamScoreLine team={awayTeam} owner={awayOwner} odds={awayOdds} score={match.result.away} winner={played && isMatchWinner(match, 'away')} />
+      <div className="google-match-links">
+        <a href={match.highlightUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+          ハイライト
+        </a>
+        <a href={match.newsUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+          ニュース
+        </a>
+      </div>
+    </button>
+  )
+}
+
+function TeamScoreLine({
+  team,
+  score,
+  winner,
+  owner,
+  odds,
+}: {
+  team: Team
+  score: number | null
+  winner: boolean
+  owner?: string
+  odds?: number
+}) {
+  return (
+    <div className={winner ? 'team-score-line winner' : 'team-score-line'}>
+      <span>
+        <img src={flagUrl(team.flag)} alt={`${teamNameJa(team.id)}の国旗`} />
+        {teamNameJa(team.id)}
+        {owner ? <em className="match-owner">{owner}</em> : null}
+        {odds ? <em className="match-odds">{odds.toFixed(2)}倍</em> : null}
+      </span>
+      <strong>{score ?? '-'}</strong>
+    </div>
+  )
+}
+
+function isMatchWinner(match: Match, side: 'home' | 'away'): boolean {
+  if (!matchWasPlayed(match) || match.result.home === null || match.result.away === null) return false
+  if (side === 'home') return match.result.home > match.result.away || Boolean(match.result.homePenaltyWin)
+  return match.result.away > match.result.home || Boolean(match.result.awayPenaltyWin)
+}
+
+function teamNameJa(teamId: string): string {
+  return teamNamesJa[teamId] || teams.find((team) => team.id === teamId)?.name || teamId
+}
+
+function formatDateJa(date: string): string {
+  const parsed = new Date(`${date}T00:00:00`)
+  if (Number.isNaN(parsed.getTime())) return date
+  return new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' }).format(parsed)
+}
+
+function formatJst(iso?: string): string {
+  if (!iso) return ''
+  const parsed = new Date(iso)
+  if (Number.isNaN(parsed.getTime())) return ''
+  return (
+    new Intl.DateTimeFormat('ja-JP', {
+      timeZone: 'Asia/Tokyo',
+      month: 'numeric',
+      day: 'numeric',
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    }).format(parsed) + ' JST'
+  )
+}

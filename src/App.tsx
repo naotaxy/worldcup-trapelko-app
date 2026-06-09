@@ -20,7 +20,9 @@ import {
 import './App.css'
 import { BoardView } from './components/BoardView'
 import { CountrySlot, type SlotCountry } from './components/CountrySlot'
+import { GoogleMatchCard } from './components/GoogleMatchCard'
 import { RoomsPanel } from './components/RoomsPanel'
+import { RulesEditor, type RuleChangeMeta } from './components/RulesEditor'
 import {
   defaultRules,
   demoMembers as seedMembers,
@@ -34,7 +36,6 @@ import {
 import {
   calculateTeamStandings,
   flagUrl,
-  matchWasPlayed,
 } from './logic/score'
 import { type ProjectionMode } from './logic/projection'
 import type { AwardSettings, GroupCode, Match, MatchResult, Member, Rules, Team, TeamSelection } from './types'
@@ -50,39 +51,7 @@ import {
 } from './lib/api'
 import { fetchTournament, knockoutTeamIds, type BracketRound } from './lib/bracket'
 import { loadLocalState, saveLocalState } from './lib/persistence'
-
-type NumericRuleKey = { [K in keyof Rules]-?: Rules[K] extends number ? K : never }[keyof Rules]
-type BoolRuleKey = { [K in keyof Rules]-?: boolean extends Rules[K] ? K : never }[keyof Rules]
-const ruleToggleDefaults: Record<BoolRuleKey, boolean> = {
-  doubleHatTrickOnSix: true,
-  doubleRedCardOnTwo: true,
-  doubleJapanNegative: true,
-  oddsMultiplier: false,
-}
-const ruleToggleFields: Array<{ key: BoolRuleKey; label: string; hint: string }> = [
-  { key: 'doubleHatTrickOnSix', label: '6得点でハットトリック2倍', hint: '1選手6得点の試合はハットトリック点が2倍' },
-  { key: 'doubleRedCardOnTwo', label: 'レッドカード2枚で2倍', hint: '1チームが1試合で2枚以上なら赤ペナルティ2倍' },
-  { key: 'doubleJapanNegative', label: '日本はマイナスも2倍', hint: 'OFFにすると日本のマイナスは2倍にしない' },
-  { key: 'oddsMultiplier', label: 'オッズ倍率を適用', hint: '勝った試合の勝ち点にブックメーカー倍率を掛ける(初期OFF)' },
-]
-const ruleFields: Array<{ key: NumericRuleKey; label: string; min: number; max: number; step: number }> = [
-  { key: 'win', label: '勝ち', min: 0, max: 10, step: 1 },
-  { key: 'penaltyWin', label: 'PK勝ち', min: 0, max: 10, step: 1 },
-  { key: 'draw', label: '引分', min: 0, max: 5, step: 1 },
-  { key: 'goalMargin3Bonus', label: '3点差勝ち', min: 0, max: 10, step: 1 },
-  { key: 'hatTrickBonus', label: 'ハットトリック', min: 0, max: 10, step: 1 },
-  { key: 'knockoutQualifiedBonus', label: '決勝T進出', min: 0, max: 12, step: 1 },
-  { key: 'thirdPlaceBonus', label: '3位', min: 0, max: 12, step: 1 },
-  { key: 'runnerUpBonus', label: '準優勝', min: 0, max: 20, step: 1 },
-  { key: 'championBonus', label: '優勝', min: 0, max: 25, step: 1 },
-  { key: 'allLossBonus', label: '全敗', min: 0, max: 15, step: 1 },
-  { key: 'mvpBonus', label: 'MVP', min: 0, max: 20, step: 1 },
-  { key: 'topScorerBonus', label: '得点王', min: 0, max: 20, step: 1 },
-  { key: 'yellowCardsFourPenalty', label: '黄4枚', min: -5, max: 0, step: 1 },
-  { key: 'redCardPenalty', label: '赤', min: -5, max: 0, step: 1 },
-  { key: 'ownGoalPenalty', label: 'OG', min: -5, max: 0, step: 1 },
-  { key: 'japanMultiplier', label: '日本倍率', min: 1, max: 3, step: 0.5 },
-]
+import { neutralPublicRules } from './lib/publicRules'
 
 const maxTeamsPerMember = 8
 const maxOwnersPerTeam = 2
@@ -320,12 +289,6 @@ function App() {
     () => calculateTeamStandings(groups, liveFixtures, rules, awards, qualifierIds, odds),
     [awards, liveFixtures, rules, qualifierIds, odds],
   )
-  // Public rooms are scored with the neutral public ruleset (insider rules/japan2x
-  // never leak into public games), but share the real tournament results + awards.
-  const publicTeamStandings = useMemo(
-    () => calculateTeamStandings(groups, liveFixtures, publicRules, awards, qualifierIds, odds),
-    [awards, liveFixtures, qualifierIds, odds],
-  )
   const oddsProbs = useMemo(() => {
     const out: Record<string, { home: number; draw: number; away: number }> = {}
     for (const fixture of fixtures) {
@@ -440,13 +403,9 @@ function App() {
     )
   }
 
-  const updateRuleToggle = (key: BoolRuleKey, value: boolean) => {
-    setRules((current) => ({ ...current, [key]: value }))
-  }
-  const updateRule = (key: NumericRuleKey, rawValue: string) => {
-    const value = Number(rawValue)
-    setRules((current) => ({ ...current, [key]: Number.isFinite(value) ? value : current[key] }))
-    setSaveLabel('未保存')
+  const updateRules = (nextRules: Rules, meta: RuleChangeMeta) => {
+    setRules(nextRules)
+    if (meta.kind === 'number') setSaveLabel('未保存')
   }
 
   const updateAward = (key: keyof AwardSettings, teamId: string) => {
@@ -629,8 +588,6 @@ function App() {
             <em>みんなで遊ぶ</em>
           </summary>
           <RoomsPanel
-            teamStandings={publicTeamStandings}
-            rules={publicRules}
             awards={awards}
             liveFixtures={liveFixtures}
             groups={groups}
@@ -1016,46 +973,15 @@ function App() {
             </span>
             <em>{saveLabel}</em>
           </summary>
-          <div className="rule-grid">
-            {ruleFields.map((field) => (
-              <label key={field.key} className="rule-control">
-                <span>
-                  {field.label}
-                  <strong>{rules[field.key]}</strong>
-                </span>
-                <input
-                  type="range"
-                  min={field.min}
-                  max={field.max}
-                  step={field.step}
-                  value={rules[field.key]}
-                  onChange={(event) => updateRule(field.key, event.target.value)}
-                />
-              </label>
-            ))}
-          </div>
-          <div className="award-grid">
-            <AwardSelect label="優勝" value={awards.championTeamId} onChange={(teamId) => updateAward('championTeamId', teamId)} />
-            <AwardSelect label="準優勝" value={awards.runnerUpTeamId} onChange={(teamId) => updateAward('runnerUpTeamId', teamId)} />
-            <AwardSelect label="3位" value={awards.thirdPlaceTeamId} onChange={(teamId) => updateAward('thirdPlaceTeamId', teamId)} />
-            <AwardSelect label="MVP" value={awards.mvpTeamId} onChange={(teamId) => updateAward('mvpTeamId', teamId)} />
-            <AwardSelect label="得点王" value={awards.topScorerTeamId} onChange={(teamId) => updateAward('topScorerTeamId', teamId)} />
-          </div>
-          <div className="rule-toggles">
-            {ruleToggleFields.map((toggle) => (
-              <label key={toggle.key} className="rule-toggle">
-                <input
-                  type="checkbox"
-                  checked={rules[toggle.key] ?? ruleToggleDefaults[toggle.key]}
-                  onChange={(event) => updateRuleToggle(toggle.key, event.target.checked)}
-                />
-                <span>
-                  <strong>{toggle.label}</strong>
-                  <em>{toggle.hint}</em>
-                </span>
-              </label>
-            ))}
-          </div>
+          <RulesEditor rules={rules} onChange={updateRules}>
+            <div className="award-grid">
+              <AwardSelect label="優勝" value={awards.championTeamId} onChange={(teamId) => updateAward('championTeamId', teamId)} />
+              <AwardSelect label="準優勝" value={awards.runnerUpTeamId} onChange={(teamId) => updateAward('runnerUpTeamId', teamId)} />
+              <AwardSelect label="3位" value={awards.thirdPlaceTeamId} onChange={(teamId) => updateAward('thirdPlaceTeamId', teamId)} />
+              <AwardSelect label="MVP" value={awards.mvpTeamId} onChange={(teamId) => updateAward('mvpTeamId', teamId)} />
+              <AwardSelect label="得点王" value={awards.topScorerTeamId} onChange={(teamId) => updateAward('topScorerTeamId', teamId)} />
+            </div>
+          </RulesEditor>
           <button type="button" className="text-button" onClick={saveRules}>
             <Save size={16} />
             ルール保存
@@ -1079,9 +1005,7 @@ function App() {
 const SUPPORT_PAYPAY_URL = 'https://qr.paypay.ne.jp/p2p01_dtQeYi1ETPoCdhoi'
 const SUPPORT_STRIPE_URL = ''
 
-// Public rooms use a fixed, neutral ruleset: no insider house rules (e.g. 日本2倍)
-// and unaffected by the insider board's editable rules.
-const publicRules: Rules = { ...defaultRules, japanMultiplier: 1 }
+const publicRules: Rules = neutralPublicRules
 
 function SupportBar() {
   const [showPaypay, setShowPaypay] = useState(false)
@@ -1294,86 +1218,6 @@ function PanelTitle({ icon, title, note }: { icon: ReactNode; title: string; not
   )
 }
 
-function GoogleMatchCard({
-  match,
-  selected,
-  onSelect,
-  kickoff,
-  homeOwner,
-  awayOwner,
-  homeOdds,
-  awayOdds,
-  drawOdds,
-}: {
-  match: Match
-  selected: boolean
-  onSelect: () => void
-  kickoff?: string
-  homeOwner?: string
-  awayOwner?: string
-  homeOdds?: number
-  awayOdds?: number
-  drawOdds?: number
-}) {
-  const homeTeam = teams.find((team) => team.id === match.homeTeamId) || teams[0]
-  const awayTeam = teams.find((team) => team.id === match.awayTeamId) || teams[0]
-  const played = matchWasPlayed(match)
-  const hasFullOdds = homeOdds != null && drawOdds != null && awayOdds != null
-
-  return (
-    <button type="button" className={selected ? 'google-match-card active' : 'google-match-card'} onClick={onSelect}>
-      <div className="google-match-meta">
-        <span>{kickoff ? formatJst(kickoff) : formatDateJa(match.date)}</span>
-        <strong>グループ{match.group}</strong>
-        <em>{played ? '終了' : '試合前'}</em>
-      </div>
-      {hasFullOdds ? (
-        <div className="google-match-odds-row" aria-label="ブックメーカーオッズ">
-          <span>ホーム {homeOdds.toFixed(2)}倍</span>
-          <span>引分 {drawOdds.toFixed(2)}倍</span>
-          <span>アウェイ {awayOdds.toFixed(2)}倍</span>
-        </div>
-      ) : null}
-      <TeamScoreLine team={homeTeam} owner={homeOwner} odds={homeOdds} score={match.result.home} winner={played && isMatchWinner(match, 'home')} />
-      <TeamScoreLine team={awayTeam} owner={awayOwner} odds={awayOdds} score={match.result.away} winner={played && isMatchWinner(match, 'away')} />
-      <div className="google-match-links">
-        <a href={match.highlightUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-          ハイライト
-        </a>
-        <a href={match.newsUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
-          ニュース
-        </a>
-      </div>
-    </button>
-  )
-}
-
-function TeamScoreLine({
-  team,
-  score,
-  winner,
-  owner,
-  odds,
-}: {
-  team: Team
-  score: number | null
-  winner: boolean
-  owner?: string
-  odds?: number
-}) {
-  return (
-    <div className={winner ? 'team-score-line winner' : 'team-score-line'}>
-      <span>
-        <img src={flagUrl(team.flag)} alt={`${teamNameJa(team.id)}の国旗`} />
-        {teamNameJa(team.id)}
-        {owner ? <em className="match-owner">{owner}</em> : null}
-        {odds ? <em className="match-odds">{odds.toFixed(2)}倍</em> : null}
-      </span>
-      <strong>{score ?? '-'}</strong>
-    </div>
-  )
-}
-
 function EventNumber({ label, value, onChange }: { label: string; value?: number; onChange: (value: string) => void }) {
   return (
     <label>
@@ -1475,35 +1319,6 @@ function clearSlotTimer(timerRef: MutableRefObject<number | null>) {
   if (timerRef.current === null) return
   window.clearTimeout(timerRef.current)
   timerRef.current = null
-}
-
-function isMatchWinner(match: Match, side: 'home' | 'away'): boolean {
-  if (!matchWasPlayed(match) || match.result.home === null || match.result.away === null) return false
-  if (side === 'home') return match.result.home > match.result.away || Boolean(match.result.homePenaltyWin)
-  return match.result.away > match.result.home || Boolean(match.result.awayPenaltyWin)
-}
-
-function formatDateJa(date: string): string {
-  const parsed = new Date(`${date}T00:00:00`)
-  if (Number.isNaN(parsed.getTime())) return date
-  return new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' }).format(parsed)
-}
-
-// Real kickoff time in Japan time (JST), from an ISO timestamp.
-function formatJst(iso?: string): string {
-  if (!iso) return ''
-  const parsed = new Date(iso)
-  if (Number.isNaN(parsed.getTime())) return ''
-  return (
-    new Intl.DateTimeFormat('ja-JP', {
-      timeZone: 'Asia/Tokyo',
-      month: 'numeric',
-      day: 'numeric',
-      weekday: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(parsed) + ' JST'
-  )
 }
 
 function applyResultMap(base: Match[], results: Record<string, MatchResult>): Match[] {

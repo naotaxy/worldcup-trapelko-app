@@ -68,6 +68,7 @@ const rulesSchema = z.object({
   doubleJapanNegative: z.boolean().optional(),
   oddsMultiplier: z.boolean().optional(),
 })
+const roomRulesSchema = rulesSchema.partial()
 
 const awardsSchema = z.object({
   championTeamId: z.string(),
@@ -387,11 +388,32 @@ app.get('/api/analytics/summary', async (req, res) => {
 // All room data is service_role-only (RLS has no public policies).
 const ROOM_ACCENTS = ['#e23d3d', '#38a9a6', '#e0b336', '#4f7fdd', '#2ca36a', '#d9632c', '#9854d7', '#c93e79']
 const roomTeamIdsCache = { ids: null }
+const roomRulesCache = { neutral: null }
 async function allRoomTeamIds() {
   if (roomTeamIdsCache.ids) return roomTeamIdsCache.ids
   const data = await import('../src/data/worldCup2026.ts')
   roomTeamIdsCache.ids = data.teams.map((t) => t.id)
   return roomTeamIdsCache.ids
+}
+async function neutralRoomRules() {
+  if (!roomRulesCache.neutral) {
+    const data = await import('../src/data/worldCup2026.ts')
+    roomRulesCache.neutral = { ...data.defaultRules, japanMultiplier: 1 }
+  }
+  return { ...roomRulesCache.neutral }
+}
+async function sanitizeRoomRules(rawRules, { required = false } = {}) {
+  const fallback = await neutralRoomRules()
+  if (rawRules == null) return required ? { ok: false, rules: fallback } : { ok: true, rules: fallback }
+  if (typeof rawRules !== 'object' || Array.isArray(rawRules)) return { ok: false, rules: fallback }
+  const parsed = roomRulesSchema.safeParse(rawRules)
+  if (!parsed.success) return { ok: false, rules: fallback }
+  return { ok: true, rules: { ...fallback, ...parsed.data } }
+}
+function isMissingRoomRulesColumn(error) {
+  if (!error) return false
+  const text = `${error.code || ''} ${error.message || ''} ${error.details || ''} ${error.hint || ''}`.toLowerCase()
+  return text.includes('rules') && (text.includes('column') || text.includes('schema cache') || text.includes('pgrst204'))
 }
 const genRoomToken = () => crypto.randomBytes(24).toString('hex')
 const hashRoomToken = (value) => sha256Hex(value)
@@ -418,6 +440,7 @@ const createRoomSchema = z.object({
   passphrase: z.string().max(64).optional(),
   picksPerPlayer: z.number().int().min(1).max(12).optional(),
   maxPlayers: z.number().int().min(2).max(8).optional(),
+  rules: z.unknown().optional(),
 })
 const joinRoomSchema = z.object({
   nickname: z.string().trim().min(1).max(24),
@@ -426,6 +449,10 @@ const joinRoomSchema = z.object({
 const roomPicksSchema = z.object({
   token: z.string().min(1),
   teamIds: z.array(z.string().min(1)).min(1).max(12),
+})
+const roomRulesUpdateSchema = z.object({
+  token: z.string().min(1),
+  rules: z.unknown(),
 })
 
 async function loadRoomAndPlayer(code, token) {
@@ -471,12 +498,14 @@ async function buildRoomState(code, token) {
     .select('*')
     .eq('room_id', room.id)
     .order('seat', { ascending: true })
+  const roomRules = (await sanitizeRoomRules(room.rules)).rules
   const tokenHash = token ? hashRoomToken(token) : null
   const you = (players || []).find((p) => p.token_hash === tokenHash) || null
   const state = {
     code: room.code,
     name: room.name,
     status: room.status,
+    rules: roomRules,
     picksPerPlayer: room.picks_per_player,
     maxPlayers: room.max_players,
     maxOwnersPerTeam: room.max_owners_per_team,
@@ -529,6 +558,11 @@ app.post('/api/rooms', async (req, res) => {
     return
   }
   const { name, nickname, passphrase, picksPerPlayer, maxPlayers } = parsed.data
+  const roomRules = await sanitizeRoomRules(parsed.data.rules)
+  if (!roomRules.ok) {
+    res.status(400).json({ ok: false, error: 'invalid rules' })
+    return
+  }
   let code = null
   for (let i = 0; i < 6; i += 1) {
     const candidate = makeRoomCode()
@@ -542,17 +576,23 @@ app.post('/api/rooms', async (req, res) => {
     res.status(500).json({ ok: false, error: 'could not allocate room code' })
     return
   }
-  const { data: room, error: roomErr } = await supabase
+  const roomInsert = {
+    code,
+    name,
+    passphrase_hash: passphrase ? hashRoomToken(passphrase) : null,
+    picks_per_player: picksPerPlayer ?? 8,
+    max_players: maxPlayers ?? 8,
+  }
+  let { data: room, error: roomErr } = await supabase
     .from('rooms')
-    .insert({
-      code,
-      name,
-      passphrase_hash: passphrase ? hashRoomToken(passphrase) : null,
-      picks_per_player: picksPerPlayer ?? 8,
-      max_players: maxPlayers ?? 8,
-    })
+    .insert({ ...roomInsert, rules: roomRules.rules })
     .select()
     .single()
+  if (isMissingRoomRulesColumn(roomErr)) {
+    const fallbackInsert = await supabase.from('rooms').insert(roomInsert).select().single()
+    room = fallbackInsert.data
+    roomErr = fallbackInsert.error
+  }
   if (roomErr) {
     res.status(500).json({ ok: false, error: roomErr.message })
     return
@@ -637,6 +677,36 @@ app.get('/api/rooms/:code', async (req, res) => {
     return
   }
   res.json({ ok: true, room: state })
+})
+
+app.post('/api/rooms/:code/rules', async (req, res) => {
+  if (!roomsReady(res)) return
+  const parsed = roomRulesUpdateSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: 'invalid input' })
+    return
+  }
+  const code = String(req.params.code).toUpperCase()
+  const { room } = await requireRoomHost(code, parsed.data.token, res)
+  if (!room) return
+  const roomRules = await sanitizeRoomRules(parsed.data.rules, { required: true })
+  if (!roomRules.ok) {
+    res.status(400).json({ ok: false, error: 'invalid rules' })
+    return
+  }
+  const { error } = await supabase
+    .from('rooms')
+    .update({ rules: roomRules.rules, updated_at: new Date().toISOString() })
+    .eq('id', room.id)
+  if (isMissingRoomRulesColumn(error)) {
+    res.status(400).json({ ok: false, error: 'migration not run' })
+    return
+  }
+  if (error) {
+    res.status(500).json({ ok: false, error: error.message })
+    return
+  }
+  res.json({ ok: true, room: await buildRoomState(code, parsed.data.token) })
 })
 
 app.post('/api/rooms/:code/start', async (req, res) => {

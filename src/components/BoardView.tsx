@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { Gauge, Medal, Network, Trophy } from 'lucide-react'
+import { Bell, Gauge, Medal, Network, Trophy } from 'lucide-react'
 import { fifaRanking, teamNamesJa, teams, worldCupHistory } from '../data/worldCup2026'
 import { pdfCountryInfo, pdfSquads } from '../data/wcPdf'
 import {
@@ -15,6 +15,7 @@ import type { AwardSettings, Group, GroupCode, Match, Member, Rules, TeamSelecti
 import type { PlayerStat } from '../lib/api'
 import type { BracketMatch, BracketRound, BracketTeam } from '../lib/bracket'
 import { ProjectionGraph } from './ProjectionGraph'
+import { GoogleMatchCard } from './GoogleMatchCard'
 import { TeamDetailModal } from './TeamDetailModal'
 
 const maxTeamsPerMember = 8
@@ -64,6 +65,7 @@ export function BoardView({
 }: BoardViewProps) {
   const [internalActiveGroup, setInternalActiveGroup] = useState<GroupCode>('F')
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null)
+  const [selectedPublicMatchId, setSelectedPublicMatchId] = useState('F-1')
   const activeGroup = controlledActiveGroup ?? internalActiveGroup
   const effectiveProjectionMode = isPublic && projectionMode === 'historyDemo' ? 'standard' : projectionMode
   const sectionId = (id: string) => (isPublic ? `room-${id}` : id)
@@ -73,6 +75,11 @@ export function BoardView({
     [liveFixtures],
   )
   const activeRows = useMemo(() => groupStandings(teamStandings, activeGroup), [teamStandings, activeGroup])
+  const activeMatches = useMemo(() => liveFixtures.filter((match) => match.group === activeGroup), [activeGroup, liveFixtures])
+  const selectedPublicMatch = useMemo(
+    () => activeMatches.find((match) => match.id === selectedPublicMatchId) || activeMatches[0] || liveFixtures[0],
+    [activeMatches, liveFixtures, selectedPublicMatchId],
+  )
   const memberStandings = useMemo(
     () => calculateMemberStandings(members, selections, teamStandings),
     [members, selections, teamStandings],
@@ -108,6 +115,7 @@ export function BoardView({
   const setActiveGroup = (group: GroupCode) => {
     if (onActiveGroup) onActiveGroup(group)
     else setInternalActiveGroup(group)
+    setSelectedPublicMatchId(`${group}-1`)
   }
 
   const selectedTeam = selectedTeamId ? teams.find((entry) => entry.id === selectedTeamId) : null
@@ -181,6 +189,28 @@ export function BoardView({
           ))}
         </div>
       </details>
+
+      {isPublic ? (
+        <section className="panel match-panel" id={sectionId('match-desk')}>
+          <PanelTitle icon={<Bell size={18} />} title="試合・結果" note="" />
+          <div className="google-match-list">
+            {activeMatches.map((match) => (
+              <GoogleMatchCard
+                key={match.id}
+                match={match}
+                selected={selectedPublicMatch?.id === match.id}
+                onSelect={() => setSelectedPublicMatchId(match.id)}
+                kickoff={schedule[match.id]}
+                homeOwner={teamOwnersByTeam.get(match.homeTeamId)}
+                awayOwner={teamOwnersByTeam.get(match.awayTeamId)}
+                homeOdds={odds[match.id]?.[match.homeTeamId]}
+                awayOdds={odds[match.id]?.[match.awayTeamId]}
+                drawOdds={odds[match.id]?.draw}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section className="panel leaderboard-panel" id={sectionId('member-ranking')}>
         <PanelTitle icon={<Medal size={18} />} title="参加者ランキング" note="総合ポイント" />

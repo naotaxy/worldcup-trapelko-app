@@ -1,12 +1,14 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Check, Copy, Crown, LogOut, Plus, Shuffle, Users } from 'lucide-react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Check, Copy, Crown, LogOut, Plus, Settings, Shuffle, Users } from 'lucide-react'
 import { groups, teamNamesJa } from '../data/worldCup2026'
-import { flagUrl } from '../logic/score'
+import { calculateTeamStandings, flagUrl } from '../logic/score'
 import type { MatchProb, ProjectionMode } from '../logic/projection'
-import type { AwardSettings, Group, Match, Member, Rules, TeamSelection, TeamStanding } from '../types'
+import type { AwardSettings, Group, Match, Member, Rules, TeamSelection } from '../types'
 import type { PlayerStat } from '../lib/api'
 import type { BracketRound } from '../lib/bracket'
+import { normalizeRules } from '../lib/publicRules'
 import { BoardView } from './BoardView'
+import { RulesEditor, RulesSummary } from './RulesEditor'
 import {
   createRoom,
   getRoom,
@@ -16,6 +18,7 @@ import {
   saveRoomSession,
   startRoom,
   submitPicks,
+  updateRoomRules,
   type RoomSession,
   type RoomState,
 } from '../lib/roomsApi'
@@ -25,8 +28,6 @@ const nameJa = (id: string) => teamNamesJa[id] || id
 type EntryTab = 'create' | 'join'
 
 type RoomsPanelProps = {
-  teamStandings: TeamStanding[]
-  rules: Rules
   awards: AwardSettings
   liveFixtures: Match[]
   groups: Group[]
@@ -42,8 +43,6 @@ type RoomsPanelProps = {
 }
 
 export function RoomsPanel({
-  teamStandings,
-  rules,
   awards,
   liveFixtures,
   groups: boardGroups,
@@ -62,6 +61,8 @@ export function RoomsPanel({
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
+  const rulesRequestRef = useRef(0)
+  const rulesPendingRef = useRef(0)
 
   const setSessionPersisted = useCallback((next: RoomSession | null) => {
     saveRoomSession(next)
@@ -69,9 +70,8 @@ export function RoomsPanel({
     if (!next) setRoom(null)
   }, [])
 
-  // Initial load + polling while the draft is live. The fetch + setters live in
-  // an inline async closure (the accepted pattern here) and polling stops once
-  // the room is revealed.
+  // Initial load + polling. Revealed rooms keep polling so host rule edits are
+  // reflected on read-only viewers without a reload.
   useEffect(() => {
     if (!session) return
     let cancelled = false
@@ -91,8 +91,10 @@ export function RoomsPanel({
           setRoom(null)
           stop()
         } else {
-          setRoom(res.room)
-          if (res.room.status === 'revealed') stop()
+          const nextRoom = res.room
+          setRoom((current) =>
+            rulesPendingRef.current > 0 && current && current.code === nextRoom.code ? { ...nextRoom, rules: current.rules } : nextRoom,
+          )
         }
       } else if (res.error && /not found/i.test(res.error)) {
         saveRoomSession(null)
@@ -108,6 +110,29 @@ export function RoomsPanel({
       stop()
     }
   }, [session])
+
+  const updateRulesForRoom = useCallback(
+    async (nextRules: Rules): Promise<boolean> => {
+      if (!session || !room) return false
+      const requestId = rulesRequestRef.current + 1
+      rulesRequestRef.current = requestId
+      const previousRules = normalizeRules(room.rules)
+      rulesPendingRef.current += 1
+      setError('')
+      setRoom((current) => (current && current.code === room.code ? { ...current, rules: nextRules } : current))
+      const res = await updateRoomRules(session.code, session.token, nextRules)
+      rulesPendingRef.current = Math.max(0, rulesPendingRef.current - 1)
+      if (requestId !== rulesRequestRef.current) return Boolean(res.ok)
+      if (res.ok && res.room) {
+        setRoom(res.room)
+        return true
+      }
+      setRoom((current) => (current && current.code === room.code ? { ...current, rules: previousRules } : current))
+      setError(res.error || '配点を保存できませんでした')
+      return false
+    },
+    [room, session],
+  )
 
   if (!session || !room) {
     return <RoomEntry busy={busy} error={error} onBusy={setBusy} onError={setError} onJoined={(s, r) => { setSessionPersisted(s); setRoom(r) }} />
@@ -172,8 +197,8 @@ export function RoomsPanel({
       {room.status === 'revealed' ? (
         <RoomReveal
           room={room}
-          teamStandings={teamStandings}
-          rules={rules}
+          youHost={youHost}
+          onRulesChange={updateRulesForRoom}
           awards={awards}
           liveFixtures={liveFixtures}
           groups={boardGroups}
@@ -470,8 +495,8 @@ function RoomPicking({
 
 function RoomReveal({
   room,
-  teamStandings,
-  rules,
+  youHost,
+  onRulesChange,
   awards,
   liveFixtures,
   groups,
@@ -486,8 +511,8 @@ function RoomReveal({
   onProjectionMode,
 }: {
   room: RoomState
-  teamStandings: TeamStanding[]
-  rules: Rules
+  youHost: boolean
+  onRulesChange: (rules: Rules) => Promise<boolean>
   awards: AwardSettings
   liveFixtures: Match[]
   groups: Group[]
@@ -501,8 +526,14 @@ function RoomReveal({
   projectionMode: ProjectionMode
   onProjectionMode: (mode: ProjectionMode) => void
 }) {
+  const [rulesLabel, setRulesLabel] = useState(youHost ? 'ホストのみ編集' : '閲覧のみ')
   const assignments = useMemo(() => room.assignments || [], [room.assignments])
   const roulette = assignments.filter((a) => a.source === 'roulette')
+  const roomRules = useMemo(() => normalizeRules(room.rules), [room.rules])
+  const teamStandings = useMemo(
+    () => calculateTeamStandings(groups, liveFixtures, roomRules, awards, qualifierIds, odds),
+    [awards, groups, liveFixtures, odds, qualifierIds, roomRules],
+  )
   const members = useMemo<Member[]>(
     () =>
       room.players.map((p) => ({
@@ -520,6 +551,11 @@ function RoomReveal({
   )
 
   const nicknameOf = (playerId: string) => room.players.find((p) => p.id === playerId)?.nickname || '—'
+  const updateRules = (nextRules: Rules) => {
+    if (!youHost) return
+    setRulesLabel('保存中')
+    void onRulesChange(nextRules).then((ok) => setRulesLabel(ok ? '保存済み' : '保存失敗'))
+  }
 
   return (
     <div className="room-revealed">
@@ -543,10 +579,21 @@ function RoomReveal({
         <p className="room-step">被り3人以上はなし。全員が選んだ国を確保しました。</p>
       )}
 
+      <details className="panel rules-panel room-rules-panel" id="room-rules-lab">
+        <summary className="rescue-summary">
+          <span>
+            <Settings size={18} />
+            <strong>配点調整</strong>
+          </span>
+          <em>{rulesLabel}</em>
+        </summary>
+        {youHost ? <RulesEditor rules={roomRules} onChange={(nextRules) => updateRules(nextRules)} /> : <RulesSummary rules={roomRules} />}
+      </details>
+
       <BoardView
         members={members}
         selections={selections}
-        rules={rules}
+        rules={roomRules}
         awards={awards}
         teamStandings={teamStandings}
         liveFixtures={liveFixtures}

@@ -2,6 +2,8 @@
 // errors to null), these surface server error messages so the UI can show them
 // (wrong passphrase, nickname taken, room full, etc.).
 
+import type { Rules } from '../types'
+
 export type RoomPlayer = {
   id: string
   nickname: string
@@ -26,6 +28,7 @@ export type RoomState = {
   code: string
   name: string
   status: RoomStatus
+  rules: Rules
   picksPerPlayer: number
   maxPlayers: number
   maxOwnersPerTeam: number
@@ -90,6 +93,7 @@ export function createRoom(input: {
   passphrase?: string
   picksPerPlayer?: number
   maxPlayers?: number
+  rules?: Rules
 }) {
   return request<RoomResponse>('/api/rooms', 'POST', input)
 }
@@ -114,4 +118,8 @@ export function submitPicks(code: string, token: string, teamIds: string[]) {
 export function revealRoom(code: string, token: string, force = false) {
   const q = force ? '?force=1' : ''
   return request<RoomResponse>(`/api/rooms/${encodeURIComponent(code)}/reveal${q}`, 'POST', { token })
+}
+
+export function updateRoomRules(code: string, token: string, rules: Rules) {
+  return request<RoomResponse>(`/api/rooms/${encodeURIComponent(code)}/rules`, 'POST', { token, rules })
 }

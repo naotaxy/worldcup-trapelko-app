@@ -67,3 +67,6 @@ create index if not exists idx_room_players_room on public.room_players(room_id)
 create index if not exists idx_room_pick_intents_room on public.room_pick_intents(room_id, player_id);
 create index if not exists idx_room_assignments_room on public.room_assignments(room_id);
 create index if not exists idx_rooms_updated on public.rooms(updated_at desc);
+
+alter table public.rooms
+  add column if not exists rules jsonb not null default '{}'::jsonb;
