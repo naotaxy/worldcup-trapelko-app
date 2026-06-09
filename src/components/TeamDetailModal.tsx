@@ -1,4 +1,5 @@
 import { ExternalLink, X } from 'lucide-react'
+import { createPortal } from 'react-dom'
 import { playerInfoJa } from '../data/playerInfoJa'
 import type { PdfPlayer } from '../data/wcPdf'
 import { teamNamesJa, teams } from '../data/worldCup2026'
@@ -72,8 +73,18 @@ export function TeamDetailModal({
     FW: players.filter((player) => player.pos === 'FW'),
   }
   const { hatTricks, yellowCards, redCards, ownGoals } = breakdown.tallies
+  const nextMatchOddsText = nextMatch
+    ? [
+        nextMatch.winOdds != null ? `勝ち ${nextMatch.winOdds.toFixed(2)}倍` : null,
+        nextMatch.drawOdds != null ? `引分 ${nextMatch.drawOdds.toFixed(2)}倍` : null,
+      ]
+        .filter((value): value is string => Boolean(value))
+        .join(' / ')
+    : ''
 
-  return (
+  if (typeof document === 'undefined') return null
+
+  return createPortal(
     <div className="team-modal-overlay" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="team-modal" onClick={(event) => event.stopPropagation()}>
         <header className="team-modal-head">
@@ -123,11 +134,7 @@ export function TeamDetailModal({
           ) : (
             <span>予選日程は終了</span>
           )}
-          {nextMatch?.winOdds ? (
-            <span>
-              勝ち {nextMatch.winOdds.toFixed(2)}倍{nextMatch.drawOdds ? ` / 引分 ${nextMatch.drawOdds.toFixed(2)}倍` : ''}
-            </span>
-          ) : null}
+          {nextMatchOddsText ? <span>{nextMatchOddsText}</span> : null}
         </div>
 
         <div className="team-modal-tallies" aria-label="自動取得イベント実績">
@@ -188,7 +195,8 @@ export function TeamDetailModal({
           <span className="team-modal-credit">選手名簿・監督・解説: 配布資料 / 写真・年齢・身長: Wikidata・Wikimedia Commons</span>
         </section>
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }
 

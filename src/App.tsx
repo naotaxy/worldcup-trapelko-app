@@ -1318,15 +1318,22 @@ function GoogleMatchCard({
   const homeTeam = teams.find((team) => team.id === match.homeTeamId) || teams[0]
   const awayTeam = teams.find((team) => team.id === match.awayTeamId) || teams[0]
   const played = matchWasPlayed(match)
+  const hasFullOdds = homeOdds != null && drawOdds != null && awayOdds != null
 
   return (
     <button type="button" className={selected ? 'google-match-card active' : 'google-match-card'} onClick={onSelect}>
       <div className="google-match-meta">
         <span>{kickoff ? formatJst(kickoff) : formatDateJa(match.date)}</span>
         <strong>グループ{match.group}</strong>
-        {drawOdds ? <span className="draw-odds">引分 {drawOdds.toFixed(2)}倍</span> : null}
         <em>{played ? '終了' : '試合前'}</em>
       </div>
+      {hasFullOdds ? (
+        <div className="google-match-odds-row" aria-label="ブックメーカーオッズ">
+          <span>ホーム {homeOdds.toFixed(2)}倍</span>
+          <span>引分 {drawOdds.toFixed(2)}倍</span>
+          <span>アウェイ {awayOdds.toFixed(2)}倍</span>
+        </div>
+      ) : null}
       <TeamScoreLine team={homeTeam} owner={homeOwner} odds={homeOdds} score={match.result.home} winner={played && isMatchWinner(match, 'home')} />
       <TeamScoreLine team={awayTeam} owner={awayOwner} odds={awayOdds} score={match.result.away} winner={played && isMatchWinner(match, 'away')} />
       <div className="google-match-links">
