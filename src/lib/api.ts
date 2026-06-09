@@ -1,4 +1,6 @@
 import type { AwardSettings, MatchResult, Rules, TeamSelection } from '../types'
+import type { RulesTimeline } from '../logic/score'
+import type { RulesUpdateMode } from './publicRules'
 
 // Thin, defensive client for the optional backend API.
 //
@@ -16,6 +18,7 @@ export type PlayerStat = { name?: string; abbr?: string; goals?: number; yellow?
 export type ServerState = {
   source: 'supabase' | 'static'
   rules?: Rules
+  rulesTimeline?: RulesTimeline
   awards?: AwardSettings
   selections?: TeamSelection[]
   results?: Record<string, MatchResult>
@@ -117,8 +120,8 @@ export async function pushResult(matchId: string, result: MatchResult, notifyTo?
   return Boolean(out?.ok)
 }
 
-export async function pushRules(rules: Rules, awards: AwardSettings): Promise<boolean> {
-  const out = await postJson<{ ok: boolean }>('/api/rules', { ...rules, awards }, { 'x-admin-key': adminKey() })
+export async function pushRules(rules: Rules, awards: AwardSettings, mode: RulesUpdateMode = 'all'): Promise<boolean> {
+  const out = await postJson<{ ok: boolean }>('/api/rules', { ...rules, awards, mode }, { 'x-admin-key': adminKey() })
   return Boolean(out?.ok)
 }
 

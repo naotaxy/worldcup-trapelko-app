@@ -9,6 +9,7 @@ import {
   flagUrl,
   groupStandings,
   matchWasPlayed,
+  type RulesTimeline,
 } from '../logic/score'
 import { calculateFinalProjections, type MatchProb, type ProjectionMode } from '../logic/projection'
 import type { AwardSettings, Group, GroupCode, Match, Member, Rules, TeamSelection, TeamStanding } from '../types'
@@ -23,7 +24,7 @@ const maxTeamsPerMember = 8
 export type BoardViewProps = {
   members: Member[]
   selections: TeamSelection[]
-  rules: Rules
+  rules: Rules | RulesTimeline
   awards: AwardSettings
   teamStandings: TeamStanding[]
   liveFixtures: Match[]
@@ -97,8 +98,9 @@ export function BoardView({
         oddsProbs,
         qualifierIds,
         odds,
+        schedule,
       ),
-    [awards, effectiveProjectionMode, groups, liveFixtures, members, odds, oddsProbs, qualifierIds, rules, selections],
+    [awards, effectiveProjectionMode, groups, liveFixtures, members, odds, oddsProbs, qualifierIds, rules, schedule, selections],
   )
   const teamOwnersByTeam = useMemo(() => {
     const owners = new Map<string, string>()
@@ -122,7 +124,7 @@ export function BoardView({
   const selectedTeamModal = selectedTeam ? (
     <TeamDetailModal
       team={selectedTeam}
-      breakdown={calculateTeamBreakdown(selectedTeam, groups, liveFixtures, rules, awards, qualifierIds, odds)}
+      breakdown={calculateTeamBreakdown(selectedTeam, groups, liveFixtures, rules, awards, qualifierIds, odds, schedule)}
       owners={teamOwnersByTeam.get(selectedTeam.id) || '未決定'}
       players={pdfSquads[selectedTeam.id] || []}
       playerStats={playerStats}

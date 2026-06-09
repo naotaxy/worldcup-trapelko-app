@@ -2,6 +2,8 @@
 // errors to null), these surface server error messages so the UI can show them
 // (wrong passphrase, nickname taken, room full, etc.).
 
+import type { RulesTimeline } from '../logic/score'
+import type { RulesUpdateMode } from './publicRules'
 import type { Rules } from '../types'
 
 export type RoomPlayer = {
@@ -29,6 +31,7 @@ export type RoomState = {
   name: string
   status: RoomStatus
   rules: Rules
+  rulesTimeline?: RulesTimeline
   picksPerPlayer: number
   maxPlayers: number
   maxOwnersPerTeam: number
@@ -120,6 +123,6 @@ export function revealRoom(code: string, token: string, force = false) {
   return request<RoomResponse>(`/api/rooms/${encodeURIComponent(code)}/reveal${q}`, 'POST', { token })
 }
 
-export function updateRoomRules(code: string, token: string, rules: Rules) {
-  return request<RoomResponse>(`/api/rooms/${encodeURIComponent(code)}/rules`, 'POST', { token, rules })
+export function updateRoomRules(code: string, token: string, rules: Rules, mode: RulesUpdateMode) {
+  return request<RoomResponse>(`/api/rooms/${encodeURIComponent(code)}/rules`, 'POST', { token, rules, mode })
 }

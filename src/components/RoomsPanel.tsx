@@ -6,7 +6,7 @@ import type { MatchProb, ProjectionMode } from '../logic/projection'
 import type { AwardSettings, Group, Match, Member, Rules, TeamSelection } from '../types'
 import type { PlayerStat } from '../lib/api'
 import type { BracketRound } from '../lib/bracket'
-import { normalizeRules } from '../lib/publicRules'
+import { buildRulesTimeline, currentRulesOf, normalizeRules, normalizeTimeline, type RulesUpdateMode } from '../lib/publicRules'
 import { BoardView } from './BoardView'
 import { RulesEditor, RulesSummary } from './RulesEditor'
 import {
@@ -93,7 +93,9 @@ export function RoomsPanel({
         } else {
           const nextRoom = res.room
           setRoom((current) =>
-            rulesPendingRef.current > 0 && current && current.code === nextRoom.code ? { ...nextRoom, rules: current.rules } : nextRoom,
+            rulesPendingRef.current > 0 && current && current.code === nextRoom.code
+              ? { ...nextRoom, rules: current.rules, rulesTimeline: current.rulesTimeline }
+              : nextRoom,
           )
         }
       } else if (res.error && /not found/i.test(res.error)) {
@@ -112,22 +114,33 @@ export function RoomsPanel({
   }, [session])
 
   const updateRulesForRoom = useCallback(
-    async (nextRules: Rules): Promise<boolean> => {
+    async (nextRules: Rules, mode: RulesUpdateMode): Promise<boolean> => {
       if (!session || !room) return false
       const requestId = rulesRequestRef.current + 1
       rulesRequestRef.current = requestId
-      const previousRules = normalizeRules(room.rules)
+      const previousRules = room.rules
+      const previousTimeline = room.rulesTimeline
+      const optimisticTimeline = buildRulesTimeline(
+        normalizeTimeline(room.rulesTimeline, normalizeRules(room.rules)),
+        nextRules,
+        mode,
+        new Date().toISOString(),
+      )
       rulesPendingRef.current += 1
       setError('')
-      setRoom((current) => (current && current.code === room.code ? { ...current, rules: nextRules } : current))
-      const res = await updateRoomRules(session.code, session.token, nextRules)
+      setRoom((current) =>
+        current && current.code === room.code ? { ...current, rules: nextRules, rulesTimeline: optimisticTimeline } : current,
+      )
+      const res = await updateRoomRules(session.code, session.token, nextRules, mode)
       rulesPendingRef.current = Math.max(0, rulesPendingRef.current - 1)
       if (requestId !== rulesRequestRef.current) return Boolean(res.ok)
       if (res.ok && res.room) {
         setRoom(res.room)
         return true
       }
-      setRoom((current) => (current && current.code === room.code ? { ...current, rules: previousRules } : current))
+      setRoom((current) =>
+        current && current.code === room.code ? { ...current, rules: previousRules, rulesTimeline: previousTimeline } : current,
+      )
       setError(res.error || '配点を保存できませんでした')
       return false
     },
@@ -512,7 +525,7 @@ function RoomReveal({
 }: {
   room: RoomState
   youHost: boolean
-  onRulesChange: (rules: Rules) => Promise<boolean>
+  onRulesChange: (rules: Rules, mode: RulesUpdateMode) => Promise<boolean>
   awards: AwardSettings
   liveFixtures: Match[]
   groups: Group[]
@@ -529,10 +542,14 @@ function RoomReveal({
   const [rulesLabel, setRulesLabel] = useState(youHost ? 'ホストのみ編集' : '閲覧のみ')
   const assignments = useMemo(() => room.assignments || [], [room.assignments])
   const roulette = assignments.filter((a) => a.source === 'roulette')
-  const roomRules = useMemo(() => normalizeRules(room.rules), [room.rules])
+  const roomTimeline = useMemo(
+    () => normalizeTimeline(room.rulesTimeline, normalizeRules(room.rules)),
+    [room.rulesTimeline, room.rules],
+  )
+  const roomRules = useMemo(() => currentRulesOf(roomTimeline), [roomTimeline])
   const teamStandings = useMemo(
-    () => calculateTeamStandings(groups, liveFixtures, roomRules, awards, qualifierIds, odds),
-    [awards, groups, liveFixtures, odds, qualifierIds, roomRules],
+    () => calculateTeamStandings(groups, liveFixtures, roomTimeline, awards, qualifierIds, odds, schedule),
+    [awards, groups, liveFixtures, odds, qualifierIds, roomTimeline, schedule],
   )
   const members = useMemo<Member[]>(
     () =>
@@ -551,10 +568,10 @@ function RoomReveal({
   )
 
   const nicknameOf = (playerId: string) => room.players.find((p) => p.id === playerId)?.nickname || '—'
-  const updateRules = (nextRules: Rules) => {
+  const updateRules = (nextRules: Rules, mode: RulesUpdateMode) => {
     if (!youHost) return
     setRulesLabel('保存中')
-    void onRulesChange(nextRules).then((ok) => setRulesLabel(ok ? '保存済み' : '保存失敗'))
+    void onRulesChange(nextRules, mode).then((ok) => setRulesLabel(ok ? '保存済み' : '保存失敗'))
   }
 
   return (
@@ -587,13 +604,17 @@ function RoomReveal({
           </span>
           <em>{rulesLabel}</em>
         </summary>
-        {youHost ? <RulesEditor rules={roomRules} onChange={(nextRules) => updateRules(nextRules)} /> : <RulesSummary rules={roomRules} />}
+        {youHost ? (
+          <RulesEditor rules={roomRules} onApply={(nextRules, mode) => updateRules(nextRules, mode)} />
+        ) : (
+          <RulesSummary rules={roomRules} />
+        )}
       </details>
 
       <BoardView
         members={members}
         selections={selections}
-        rules={roomRules}
+        rules={roomTimeline}
         awards={awards}
         teamStandings={teamStandings}
         liveFixtures={liveFixtures}

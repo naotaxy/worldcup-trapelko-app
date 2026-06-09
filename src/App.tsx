@@ -22,7 +22,7 @@ import { BoardView } from './components/BoardView'
 import { CountrySlot, type SlotCountry } from './components/CountrySlot'
 import { GoogleMatchCard } from './components/GoogleMatchCard'
 import { RoomsPanel } from './components/RoomsPanel'
-import { RulesEditor, type RuleChangeMeta } from './components/RulesEditor'
+import { RulesEditor } from './components/RulesEditor'
 import {
   defaultRules,
   demoMembers as seedMembers,
@@ -36,6 +36,7 @@ import {
 import {
   calculateTeamStandings,
   flagUrl,
+  type RulesTimeline,
 } from './logic/score'
 import { type ProjectionMode } from './logic/projection'
 import type { AwardSettings, GroupCode, Match, MatchResult, Member, Rules, Team, TeamSelection } from './types'
@@ -51,7 +52,7 @@ import {
 } from './lib/api'
 import { fetchTournament, knockoutTeamIds, type BracketRound } from './lib/bracket'
 import { loadLocalState, saveLocalState } from './lib/persistence'
-import { neutralPublicRules } from './lib/publicRules'
+import { buildRulesTimeline, currentRulesOf, neutralPublicRules, normalizeTimeline, type RulesUpdateMode } from './lib/publicRules'
 
 const maxTeamsPerMember = 8
 const maxOwnersPerTeam = 2
@@ -177,6 +178,9 @@ function App() {
   }, [boardUnlocked])
   const [activeGroup, setActiveGroup] = useState<GroupCode>('F')
   const [rules, setRules] = useState<Rules>(() => initialLocalState()?.rules ?? defaultRules)
+  const [rulesTimeline, setRulesTimeline] = useState<RulesTimeline>(() =>
+    normalizeTimeline(initialLocalState()?.rulesTimeline, initialLocalState()?.rules ?? defaultRules),
+  )
   const [awards, setAwards] = useState<AwardSettings>(() => initialLocalState()?.awards ?? defaultAwards)
   const [projectionMode, setProjectionMode] = useState<ProjectionMode>('standard')
   const [liveFixtures, setLiveFixtures] = useState<Match[]>(() => {
@@ -236,7 +240,11 @@ function App() {
       const shared = await fetchSharedState()
       if (cancelled) return
       if (shared) {
-        if (shared.rules) setRules(shared.rules)
+        if (shared.rules || shared.rulesTimeline) {
+          const tl = normalizeTimeline(shared.rulesTimeline, shared.rules ?? defaultRules)
+          setRulesTimeline(tl)
+          setRules(currentRulesOf(tl))
+        }
         if (shared.awards) setAwards(shared.awards)
         if (shared.selections && shared.selections.length > 0) setDraftSelections(shared.selections)
         if (shared.results) setLiveFixtures((current) => applyResultMap(current, shared.results!))
@@ -282,12 +290,12 @@ function App() {
   // Mirror mutable board state to this device so reloads keep edits even with
   // no backend.
   useEffect(() => {
-    saveLocalState({ rules, awards, selections: draftSelections, results: extractResultMap(liveFixtures) })
-  }, [rules, awards, draftSelections, liveFixtures])
+    saveLocalState({ rules, rulesTimeline, awards, selections: draftSelections, results: extractResultMap(liveFixtures) })
+  }, [rules, rulesTimeline, awards, draftSelections, liveFixtures])
 
   const teamStandings = useMemo(
-    () => calculateTeamStandings(groups, liveFixtures, rules, awards, qualifierIds, odds),
-    [awards, liveFixtures, rules, qualifierIds, odds],
+    () => calculateTeamStandings(groups, liveFixtures, rulesTimeline, awards, qualifierIds, odds, schedule),
+    [awards, liveFixtures, rulesTimeline, qualifierIds, odds, schedule],
   )
   const oddsProbs = useMemo(() => {
     const out: Record<string, { home: number; draw: number; away: number }> = {}
@@ -403,20 +411,18 @@ function App() {
     )
   }
 
-  const updateRules = (nextRules: Rules, meta: RuleChangeMeta) => {
+  const applyInsiderRules = async (nextRules: Rules, mode: RulesUpdateMode) => {
+    const nextTimeline = buildRulesTimeline(rulesTimeline, nextRules, mode, new Date().toISOString())
+    setRulesTimeline(nextTimeline)
     setRules(nextRules)
-    if (meta.kind === 'number') setSaveLabel('未保存')
+    setSaveLabel('保存中')
+    const ok = await pushRules(nextRules, awards, mode)
+    setSaveLabel(ok ? 'クラウド保存済み' : 'この端末に保存済み')
   }
 
   const updateAward = (key: keyof AwardSettings, teamId: string) => {
     setAwards((current) => ({ ...current, [key]: teamId }))
     setSaveLabel('未保存')
-  }
-
-  const saveRules = async () => {
-    setSaveLabel('保存中')
-    const ok = await pushRules(rules, awards)
-    setSaveLabel(ok ? 'クラウド保存済み' : 'この端末に保存済み')
   }
 
   const saveSelectedResult = async () => {
@@ -839,7 +845,7 @@ function App() {
         <BoardView
           members={demoMembers}
           selections={draftSelections}
-          rules={rules}
+          rules={rulesTimeline}
           awards={awards}
           teamStandings={teamStandings}
           liveFixtures={liveFixtures}
@@ -973,7 +979,7 @@ function App() {
             </span>
             <em>{saveLabel}</em>
           </summary>
-          <RulesEditor rules={rules} onChange={updateRules}>
+          <RulesEditor rules={rules} onApply={applyInsiderRules}>
             <div className="award-grid">
               <AwardSelect label="優勝" value={awards.championTeamId} onChange={(teamId) => updateAward('championTeamId', teamId)} />
               <AwardSelect label="準優勝" value={awards.runnerUpTeamId} onChange={(teamId) => updateAward('runnerUpTeamId', teamId)} />
@@ -982,10 +988,6 @@ function App() {
               <AwardSelect label="得点王" value={awards.topScorerTeamId} onChange={(teamId) => updateAward('topScorerTeamId', teamId)} />
             </div>
           </RulesEditor>
-          <button type="button" className="text-button" onClick={saveRules}>
-            <Save size={16} />
-            ルール保存
-          </button>
         </details>
         <AnalyticsPanel summary={analyticsSummary} loaded={analyticsLoaded} />
           </>

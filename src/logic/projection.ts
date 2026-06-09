@@ -1,5 +1,5 @@
 import type { AwardSettings, Group, Match, MatchResult, Member, Rules, Team, TeamSelection } from '../types'
-import { calculateMemberStandings, calculateTeamStandings, knockoutQualifiersFromStandings, matchWasPlayed } from './score'
+import { calculateMemberStandings, calculateTeamStandings, knockoutQualifiersFromStandings, matchWasPlayed, type RulesTimeline } from './score'
 
 export type MemberProjection = {
   member: Member
@@ -24,14 +24,15 @@ export function calculateFinalProjections(
   selections: TeamSelection[],
   groups: Group[],
   fixtures: Match[],
-  rules: Rules,
+  rules: Rules | RulesTimeline,
   awards: AwardSettings,
   mode: ProjectionMode = 'standard',
   oddsProbs: Record<string, MatchProb> = {},
   liveQualifierIds?: Set<string>,
   oddsByFixture?: Record<string, Record<string, number>>,
+  schedule?: Record<string, string>,
 ): MemberProjection[] {
-  const currentTeams = calculateTeamStandings(groups, fixtures, rules, awards, liveQualifierIds, oddsByFixture)
+  const currentTeams = calculateTeamStandings(groups, fixtures, rules, awards, liveQualifierIds, oddsByFixture, schedule)
   const currentMembers = calculateMemberStandings(members, selections, currentTeams)
   const currentByMember = new Map(currentMembers.map((row) => [row.member.id, row.total]))
   const sampleByMember = new Map(members.map((member) => [member.id, [] as number[]]))
@@ -50,7 +51,7 @@ export function calculateFinalProjections(
     const simulatedAwards = resolveAwards(groups, simulatedFixtures, rules, awards, rng)
     const simBaseRows = calculateTeamStandings(groups, simulatedFixtures, baselineRules(), emptyAwards())
     const simQualifiers = knockoutQualifiersFromStandings(groups, simBaseRows)
-    const teamRows = calculateTeamStandings(groups, simulatedFixtures, rules, simulatedAwards, simQualifiers, oddsByFixture)
+    const teamRows = calculateTeamStandings(groups, simulatedFixtures, rules, simulatedAwards, simQualifiers, oddsByFixture, schedule)
     const projectedTeamRows =
       mode === 'historyDemo'
         ? teamRows.map((row) => ({
@@ -210,7 +211,7 @@ function withEvents(result: MatchResult, rng: () => number): MatchResult {
 function resolveAwards(
   groups: Group[],
   fixtures: Match[],
-  rules: Rules,
+  rules: Rules | RulesTimeline,
   awards: AwardSettings,
   rng: () => number,
 ): AwardSettings {

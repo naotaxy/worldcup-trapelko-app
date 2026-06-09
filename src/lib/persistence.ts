@@ -1,4 +1,5 @@
 import type { AwardSettings, MatchResult, Rules, TeamSelection } from '../types'
+import type { RulesTimeline } from '../logic/score'
 
 // Device-local persistence. Keeps each user's board edits across reloads even
 // when no backend (Supabase) is configured, e.g. on the static GitHub Pages
@@ -7,6 +8,7 @@ import type { AwardSettings, MatchResult, Rules, TeamSelection } from '../types'
 
 export type BoardState = {
   rules?: Rules
+  rulesTimeline?: RulesTimeline
   awards?: AwardSettings
   selections?: TeamSelection[]
   results?: Record<string, MatchResult>

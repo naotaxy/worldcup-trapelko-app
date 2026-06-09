@@ -415,6 +415,51 @@ function isMissingRoomRulesColumn(error) {
   const text = `${error.code || ''} ${error.message || ''} ${error.details || ''} ${error.hint || ''}`.toLowerCase()
   return text.includes('rules') && (text.includes('column') || text.includes('schema cache') || text.includes('pgrst204'))
 }
+// Validate a stored rules timeline into a non-empty, well-formed list. The first
+// segment is always the base (from = null). Falls back to a single base segment.
+async function sanitizeRoomTimeline(rawTimeline, currentRules) {
+  const fallback = await neutralRoomRules()
+  if (Array.isArray(rawTimeline) && rawTimeline.length > 0) {
+    const segments = []
+    for (let i = 0; i < rawTimeline.length; i += 1) {
+      const seg = rawTimeline[i]
+      if (!seg || typeof seg !== 'object') continue
+      const parsed = roomRulesSchema.safeParse(seg.rules)
+      if (!parsed.success) continue
+      segments.push({ from: i > 0 && typeof seg.from === 'string' ? seg.from : null, rules: { ...fallback, ...parsed.data } })
+    }
+    if (segments.length > 0) {
+      segments[0] = { from: null, rules: segments[0].rules }
+      return segments
+    }
+  }
+  return [{ from: null, rules: currentRules }]
+}
+// 'all' replaces the history (recompute whole tournament with the new rules);
+// 'forward' appends a boundary so only matches kicking off from now use them.
+function buildRoomTimeline(existing, nextRules, mode, now) {
+  const tl = Array.isArray(existing) && existing.length > 0 ? existing : []
+  if (mode === 'forward' && tl.length > 0) return [...tl, { from: now, rules: nextRules }]
+  return [{ from: null, rules: nextRules }]
+}
+// Insider (full Rules schema) timeline sanitizer; mirrors sanitizeRoomTimeline.
+function sanitizeInsiderTimeline(rawTimeline, currentRules) {
+  if (Array.isArray(rawTimeline) && rawTimeline.length > 0) {
+    const segments = []
+    for (let i = 0; i < rawTimeline.length; i += 1) {
+      const seg = rawTimeline[i]
+      if (!seg || typeof seg !== 'object') continue
+      const parsed = rulesSchema.safeParse(seg.rules)
+      if (!parsed.success) continue
+      segments.push({ from: i > 0 && typeof seg.from === 'string' ? seg.from : null, rules: parsed.data })
+    }
+    if (segments.length > 0) {
+      segments[0] = { from: null, rules: segments[0].rules }
+      return segments
+    }
+  }
+  return [{ from: null, rules: currentRules }]
+}
 const genRoomToken = () => crypto.randomBytes(24).toString('hex')
 const hashRoomToken = (value) => sha256Hex(value)
 const normNickname = (value) => String(value).trim().toLowerCase().replace(/\s+/g, ' ')
@@ -453,6 +498,7 @@ const roomPicksSchema = z.object({
 const roomRulesUpdateSchema = z.object({
   token: z.string().min(1),
   rules: z.unknown(),
+  mode: z.enum(['all', 'forward']).optional(),
 })
 
 async function loadRoomAndPlayer(code, token) {
@@ -498,7 +544,9 @@ async function buildRoomState(code, token) {
     .select('*')
     .eq('room_id', room.id)
     .order('seat', { ascending: true })
-  const roomRules = (await sanitizeRoomRules(room.rules)).rules
+  const currentRoomRules = (await sanitizeRoomRules(room.rules)).rules
+  const roomTimeline = await sanitizeRoomTimeline(room.rules_timeline, currentRoomRules)
+  const roomRules = roomTimeline[roomTimeline.length - 1].rules
   const tokenHash = token ? hashRoomToken(token) : null
   const you = (players || []).find((p) => p.token_hash === tokenHash) || null
   const state = {
@@ -506,6 +554,7 @@ async function buildRoomState(code, token) {
     name: room.name,
     status: room.status,
     rules: roomRules,
+    rulesTimeline: roomTimeline,
     picksPerPlayer: room.picks_per_player,
     maxPlayers: room.max_players,
     maxOwnersPerTeam: room.max_owners_per_team,
@@ -585,7 +634,7 @@ app.post('/api/rooms', async (req, res) => {
   }
   let { data: room, error: roomErr } = await supabase
     .from('rooms')
-    .insert({ ...roomInsert, rules: roomRules.rules })
+    .insert({ ...roomInsert, rules: roomRules.rules, rules_timeline: [{ from: null, rules: roomRules.rules }] })
     .select()
     .single()
   if (isMissingRoomRulesColumn(roomErr)) {
@@ -694,9 +743,12 @@ app.post('/api/rooms/:code/rules', async (req, res) => {
     res.status(400).json({ ok: false, error: 'invalid rules' })
     return
   }
+  const mode = parsed.data.mode === 'forward' ? 'forward' : 'all'
+  const existingTimeline = await sanitizeRoomTimeline(room.rules_timeline, (await sanitizeRoomRules(room.rules)).rules)
+  const nextTimeline = buildRoomTimeline(existingTimeline, roomRules.rules, mode, new Date().toISOString())
   const { error } = await supabase
     .from('rooms')
-    .update({ rules: roomRules.rules, updated_at: new Date().toISOString() })
+    .update({ rules: roomRules.rules, rules_timeline: nextTimeline, updated_at: new Date().toISOString() })
     .eq('id', room.id)
   if (isMissingRoomRulesColumn(error)) {
     res.status(400).json({ ok: false, error: 'migration not run' })
@@ -908,23 +960,46 @@ app.post('/api/rules', async (req, res) => {
     res.status(403).json({ ok: false, error: 'forbidden' })
     return
   }
-  const { awards: rawAwards, adminKey: _adminKey, ...rawRules } = req.body || {}
+  const { awards: rawAwards, adminKey: _adminKey, mode: rawMode, ...rawRules } = req.body || {}
   const rules = rulesSchema.parse(rawRules)
   const awards = rawAwards ? awardsSchema.parse(rawAwards) : memoryState.awards
+  const mode = rawMode === 'forward' ? 'forward' : 'all'
+
+  let existingTimeline =
+    memoryState.rulesTimeline && memoryState.rulesTimeline.length > 0
+      ? memoryState.rulesTimeline
+      : [{ from: null, rules: memoryState.rules || rules }]
+  if (supabase) {
+    const { data: existing } = await supabase.from('rulesets').select('*').eq('id', 'default').maybeSingle()
+    existingTimeline = sanitizeInsiderTimeline(existing?.rules_timeline, existing?.rules || rules)
+  }
+  const rulesTimeline = buildRoomTimeline(existingTimeline, rules, mode, new Date().toISOString())
+
   memoryState.rules = rules
+  memoryState.rulesTimeline = rulesTimeline
   memoryState.awards = awards
 
   if (supabase) {
-    const { error } = await supabase.from('rulesets').upsert({
+    let { error } = await supabase.from('rulesets').upsert({
       id: 'default',
       rules,
+      rules_timeline: rulesTimeline,
       awards: awards || {},
       updated_at: new Date().toISOString(),
     })
+    if (isMissingRoomRulesColumn(error)) {
+      const retry = await supabase.from('rulesets').upsert({
+        id: 'default',
+        rules,
+        awards: awards || {},
+        updated_at: new Date().toISOString(),
+      })
+      error = retry.error
+    }
     if (error) throw error
   }
 
-  res.json({ ok: true, rules, awards })
+  res.json({ ok: true, rules, rulesTimeline, awards })
 })
 
 // Shared mutable board state. Returns source:"supabase" only when a backend is
@@ -937,7 +1012,7 @@ app.get('/api/state', async (_req, res) => {
 
   try {
     const [rulesetRes, selectionsRes, resultsRes] = await Promise.all([
-      supabase.from('rulesets').select('rules, awards').eq('id', 'default').maybeSingle(),
+      supabase.from('rulesets').select('*').eq('id', 'default').maybeSingle(),
       supabase.from('selections').select('team_id, owner_slot, members(member_key)'),
       supabase.from('match_results').select('*'),
     ])
@@ -963,6 +1038,9 @@ app.get('/api/state', async (_req, res) => {
     res.json({
       source: 'supabase',
       rules: rulesetRes.data?.rules || null,
+      rulesTimeline: rulesetRes.data?.rules
+        ? sanitizeInsiderTimeline(rulesetRes.data?.rules_timeline, rulesetRes.data.rules)
+        : undefined,
       awards: rulesetRes.data?.awards || null,
       selections,
       results,

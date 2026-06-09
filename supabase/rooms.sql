@@ -70,3 +70,12 @@ create index if not exists idx_rooms_updated on public.rooms(updated_at desc);
 
 alter table public.rooms
   add column if not exists rules jsonb not null default '{}'::jsonb;
+
+-- Per-room scoring rule history (timeline). Each entry is { from: ISO|null, rules }.
+-- Lets a host recompute from scratch ('all') or apply only going forward ('forward').
+alter table public.rooms
+  add column if not exists rules_timeline jsonb not null default '[]'::jsonb;
+
+-- Insider board scoring rule history (same shape), stored on the shared ruleset.
+alter table public.rulesets
+  add column if not exists rules_timeline jsonb;

@@ -10,6 +10,37 @@ export function matchWasPlayed(match: Match): boolean {
   return match.result.home !== null && match.result.away !== null
 }
 
+export type RuleSegment = { from: string | null; rules: Rules }
+export type RulesTimeline = RuleSegment[]
+
+// Accepts either a single Rules object (the legacy form) or a timeline of rule
+// segments. A plain Rules behaves exactly like a single segment effective from
+// the beginning, so every existing caller is unchanged.
+export function toRulesTimeline(rules: Rules | RulesTimeline): RulesTimeline {
+  return Array.isArray(rules) ? rules : [{ from: null, rules }]
+}
+
+export function latestRulesOf(rules: Rules | RulesTimeline): Rules {
+  const timeline = toRulesTimeline(rules)
+  return timeline[timeline.length - 1].rules
+}
+
+// The rule set in effect for a match, chosen by the match kickoff. Segments are
+// ordered; a null `from` is the base (effective from the start). A match uses
+// the latest segment whose boundary is at or before its kickoff.
+function rulesForKickoff(timeline: RulesTimeline, kickoff: string | undefined): Rules {
+  let chosen = timeline[0].rules
+  const at = kickoff ? new Date(kickoff).getTime() : Number.NEGATIVE_INFINITY
+  for (const segment of timeline) {
+    if (segment.from === null || new Date(segment.from).getTime() <= at) chosen = segment.rules
+  }
+  return chosen
+}
+
+function kickoffOf(match: Match, schedule?: Record<string, string>): string | undefined {
+  return schedule?.[match.id] || match.date
+}
+
 const emptyAwards: AwardSettings = {
   championTeamId: '',
   runnerUpTeamId: '',
@@ -21,11 +52,14 @@ const emptyAwards: AwardSettings = {
 export function calculateTeamStandings(
   groups: Group[],
   matches: Match[],
-  rules: Rules,
+  rules: Rules | RulesTimeline,
   awards: AwardSettings = emptyAwards,
   knockoutQualifierIds?: Set<string>,
   oddsByFixture?: Record<string, Record<string, number>>,
+  schedule?: Record<string, string>,
 ): TeamStanding[] {
+  const timeline = toRulesTimeline(rules)
+  const latest = timeline[timeline.length - 1].rules
   const rows = new Map<string, MutableStanding>()
 
   groups.forEach((group) => {
@@ -52,7 +86,7 @@ export function calculateTeamStandings(
     const away = rows.get(match.awayTeamId)
     if (!home || !away || match.result.home === null || match.result.away === null) return
 
-    applyMatch(home, away, match, rules, oddsByFixture)
+    applyMatch(home, away, match, rulesForKickoff(timeline, kickoffOf(match, schedule)), oddsByFixture)
   })
 
   return groups.flatMap((group) => {
@@ -67,15 +101,15 @@ export function calculateTeamStandings(
     ranked.forEach((row, index) => {
       row.rank = index + 1
       const qualified = useBracketQualifiers ? knockoutQualifierIds!.has(row.team.id) : groupIsComplete && index <= 1
-      if (qualified) row.fantasyPoints += rules.knockoutQualifiedBonus
-      if (groupIsComplete && row.played > 0 && row.losses === row.played) row.fantasyPoints += rules.allLossBonus
-      row.fantasyPoints += awardPoints(row.team.id, awards, rules)
+      if (qualified) row.fantasyPoints += latest.knockoutQualifiedBonus
+      if (groupIsComplete && row.played > 0 && row.losses === row.played) row.fantasyPoints += latest.allLossBonus
+      row.fantasyPoints += awardPoints(row.team.id, awards, latest)
       if (
         row.team.id === 'japan' &&
-        rules.japanMultiplier !== 1 &&
-        (row.fantasyPoints >= 0 || rules.doubleJapanNegative !== false)
+        latest.japanMultiplier !== 1 &&
+        (row.fantasyPoints >= 0 || latest.doubleJapanNegative !== false)
       ) {
-        row.fantasyPoints *= rules.japanMultiplier
+        row.fantasyPoints *= latest.japanMultiplier
       }
       row.fantasyPoints = roundPoint(row.fantasyPoints)
     })
@@ -151,12 +185,15 @@ export function calculateTeamBreakdown(
   team: Team,
   groups: Group[],
   matches: Match[],
-  rules: Rules,
+  rules: Rules | RulesTimeline,
   awards: AwardSettings = emptyAwards,
   knockoutQualifierIds?: Set<string>,
   oddsByFixture?: Record<string, Record<string, number>>,
+  schedule?: Record<string, string>,
 ): TeamBreakdown {
-  const standings = calculateTeamStandings(groups, matches, rules, awards, knockoutQualifierIds, oddsByFixture)
+  const timeline = toRulesTimeline(rules)
+  const latest = timeline[timeline.length - 1].rules
+  const standings = calculateTeamStandings(groups, matches, rules, awards, knockoutQualifierIds, oddsByFixture, schedule)
   const standing = standings.find((row) => row.team.id === team.id)
   const groupMatches = matches.filter((match) => match.group === team.group)
   const groupComplete = groupMatches.length > 0 && groupMatches.every(matchWasPlayed)
@@ -175,12 +212,18 @@ export function calculateTeamBreakdown(
   let winPoints = 0
   let hatTrickPoints = 0
   let redCardPoints = 0
+  let pkWinPoints = 0
+  let drawPoints = 0
+  let margin3Points = 0
+  let yellowQuadPoints = 0
+  let ownGoalPoints = 0
 
   for (const match of matches) {
     if (!matchWasPlayed(match) || match.result.home === null || match.result.away === null) continue
     const isHome = match.homeTeamId === team.id
     const isAway = match.awayTeamId === team.id
     if (!isHome && !isAway) continue
+    const r = rulesForKickoff(timeline, kickoffOf(match, schedule))
     played += 1
     const gf = isHome ? match.result.home : match.result.away
     const ga = isHome ? match.result.away : match.result.home
@@ -189,30 +232,40 @@ export function calculateTeamBreakdown(
     const matchHatTricks = Math.max(0, (isHome ? match.result.homeHatTricks : match.result.awayHatTricks) || 0)
     const sixGoals = Math.max(0, (isHome ? match.result.homeSixGoals : match.result.awaySixGoals) || 0)
     hatTricks += matchHatTricks
-    hatTrickPoints += matchHatTricks * rules.hatTrickBonus * (rules.doubleHatTrickOnSix !== false && sixGoals > 0 ? 2 : 1)
+    hatTrickPoints += matchHatTricks * r.hatTrickBonus * (r.doubleHatTrickOnSix !== false && sixGoals > 0 ? 2 : 1)
     const yc = Math.max(0, (isHome ? match.result.homeYellowCards : match.result.awayYellowCards) || 0)
     yellowCards += yc
-    yellowQuads += Math.floor(yc / 4)
+    const quads = Math.floor(yc / 4)
+    yellowQuads += quads
+    yellowQuadPoints += quads * r.yellowCardsFourPenalty
     const rc = Math.max(0, (isHome ? match.result.homeRedCards : match.result.awayRedCards) || 0)
     redCards += rc
-    redCardPoints += rc * rules.redCardPenalty * (rules.doubleRedCardOnTwo !== false && rc >= 2 ? 2 : 1)
-    ownGoals += Math.max(0, (isHome ? match.result.homeOwnGoals : match.result.awayOwnGoals) || 0)
+    redCardPoints += rc * r.redCardPenalty * (r.doubleRedCardOnTwo !== false && rc >= 2 ? 2 : 1)
+    const og = Math.max(0, (isHome ? match.result.homeOwnGoals : match.result.awayOwnGoals) || 0)
+    ownGoals += og
+    ownGoalPoints += og * r.ownGoalPenalty
 
     const pkWinner = Boolean(myPk && !oppPk)
     if (gf > ga || pkWinner) {
-      if (pkWinner && gf <= ga) pkWins += 1
-      else {
+      if (pkWinner && gf <= ga) {
+        pkWins += 1
+        pkWinPoints += r.penaltyWin
+      } else {
         wins += 1
-        if (Math.abs(gf - ga) >= 3) margin3 += 1
-        let wp = rules.win
+        if (Math.abs(gf - ga) >= 3) {
+          margin3 += 1
+          margin3Points += r.goalMargin3Bonus
+        }
+        let wp = r.win
         const winnerOdds = oddsByFixture?.[match.id]?.[team.id]
-        if (rules.oddsMultiplier === true && winnerOdds && winnerOdds > 0) wp *= winnerOdds
+        if (r.oddsMultiplier === true && winnerOdds && winnerOdds > 0) wp *= winnerOdds
         winPoints += wp
       }
     } else if (ga > gf || (oppPk && !myPk)) {
       losses += 1
     } else {
       draws += 1
+      drawPoints += r.draw
     }
   }
 
@@ -226,33 +279,33 @@ export function calculateTeamBreakdown(
     components.push({ key, label, count, points: roundPoint(points) })
   }
   addPoints('win', '勝ち', wins, winPoints)
-  add('penaltyWin', 'PK勝ち', pkWins, rules.penaltyWin)
-  add('draw', '引分', draws, rules.draw)
-  add('goalMargin3Bonus', '3点差勝ち', margin3, rules.goalMargin3Bonus)
+  addPoints('penaltyWin', 'PK勝ち', pkWins, pkWinPoints)
+  addPoints('draw', '引分', draws, drawPoints)
+  addPoints('goalMargin3Bonus', '3点差勝ち', margin3, margin3Points)
   addPoints('hatTrickBonus', 'ハットトリック', hatTricks, hatTrickPoints)
-  add('yellowCardsFourPenalty', '黄カード4枚', yellowQuads, rules.yellowCardsFourPenalty)
+  addPoints('yellowCardsFourPenalty', '黄カード4枚', yellowQuads, yellowQuadPoints)
   addPoints('redCardPenalty', 'レッドカード', redCards, redCardPoints)
-  add('ownGoalPenalty', 'オウンゴール', ownGoals, rules.ownGoalPenalty)
+  addPoints('ownGoalPenalty', 'オウンゴール', ownGoals, ownGoalPoints)
   const qualifiedForKnockout =
     knockoutQualifierIds && knockoutQualifierIds.size > 0
       ? knockoutQualifierIds.has(team.id)
       : groupComplete && !!standing && standing.rank >= 1 && standing.rank <= 2
   if (qualifiedForKnockout) {
-    add('knockout', '決勝T進出', 1, rules.knockoutQualifiedBonus)
+    add('knockout', '決勝T進出', 1, latest.knockoutQualifiedBonus)
   }
-  if (groupComplete && played > 0 && losses === played) add('allLoss', '全敗', 1, rules.allLossBonus)
-  if (awards.championTeamId === team.id) add('champion', '優勝', 1, rules.championBonus)
-  if (awards.runnerUpTeamId === team.id) add('runnerUp', '準優勝', 1, rules.runnerUpBonus)
-  if (awards.thirdPlaceTeamId === team.id) add('thirdPlace', '3位', 1, rules.thirdPlaceBonus)
-  if (awards.mvpTeamId === team.id) add('mvp', 'MVP', 1, rules.mvpBonus)
-  if (awards.topScorerTeamId === team.id) add('topScorer', '得点王', 1, rules.topScorerBonus)
+  if (groupComplete && played > 0 && losses === played) add('allLoss', '全敗', 1, latest.allLossBonus)
+  if (awards.championTeamId === team.id) add('champion', '優勝', 1, latest.championBonus)
+  if (awards.runnerUpTeamId === team.id) add('runnerUp', '準優勝', 1, latest.runnerUpBonus)
+  if (awards.thirdPlaceTeamId === team.id) add('thirdPlace', '3位', 1, latest.thirdPlaceBonus)
+  if (awards.mvpTeamId === team.id) add('mvp', 'MVP', 1, latest.mvpBonus)
+  if (awards.topScorerTeamId === team.id) add('topScorer', '得点王', 1, latest.topScorerBonus)
 
   const subtotal = components.reduce((sum, component) => sum + component.points, 0)
   let total = subtotal
-  if (team.id === 'japan' && rules.japanMultiplier !== 1 && (subtotal >= 0 || rules.doubleJapanNegative !== false)) {
-    const bonus = roundPoint(subtotal * (rules.japanMultiplier - 1))
-    components.push({ key: 'japan', label: `日本${rules.japanMultiplier}倍`, count: 1, points: bonus })
-    total = roundPoint(subtotal * rules.japanMultiplier)
+  if (team.id === 'japan' && latest.japanMultiplier !== 1 && (subtotal >= 0 || latest.doubleJapanNegative !== false)) {
+    const bonus = roundPoint(subtotal * (latest.japanMultiplier - 1))
+    components.push({ key: 'japan', label: `日本${latest.japanMultiplier}倍`, count: 1, points: bonus })
+    total = roundPoint(subtotal * latest.japanMultiplier)
   }
 
   return {

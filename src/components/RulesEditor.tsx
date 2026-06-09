@@ -1,9 +1,10 @@
+import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Rules } from '../types'
+import type { RulesUpdateMode } from '../lib/publicRules'
 
 export type NumericRuleKey = { [K in keyof Rules]-?: Rules[K] extends number ? K : never }[keyof Rules]
 export type BoolRuleKey = { [K in keyof Rules]-?: boolean extends Rules[K] ? K : never }[keyof Rules]
-export type RuleChangeMeta = { kind: 'number'; key: NumericRuleKey } | { kind: 'toggle'; key: BoolRuleKey }
 
 const RULE_TOGGLE_DEFAULTS: Record<BoolRuleKey, boolean> = {
   doubleHatTrickOnSix: true,
@@ -38,21 +39,39 @@ const RULE_FIELDS: Array<{ key: NumericRuleKey; label: string; min: number; max:
   { key: 'japanMultiplier', label: '日本倍率', min: 1, max: 3, step: 0.5 },
 ]
 
+// Edits a local draft of the rules. The host/insider then chooses how to apply:
+// "最初から再計算" (recompute the whole tournament with the new rules) or
+// "変えた時から" (only matches kicking off from now on use the new rules).
 export function RulesEditor({
   rules,
-  onChange,
+  onApply,
   children,
+  busyLabel,
 }: {
   rules: Rules
-  onChange: (rules: Rules, meta: RuleChangeMeta) => void
+  onApply: (rules: Rules, mode: RulesUpdateMode) => void
   children?: ReactNode
+  busyLabel?: string
 }) {
+  const radioName = useId()
+  const rulesKey = JSON.stringify(rules)
+  const [syncedKey, setSyncedKey] = useState(rulesKey)
+  const [draft, setDraft] = useState<Rules>(rules)
+  const [mode, setMode] = useState<RulesUpdateMode>('all')
+  // Re-sync the draft when the committed rules change (after a save, or another
+  // host edits). Adjusting state during render (not in an effect) is the React
+  // pattern for "derive from props" and avoids clobbering an in-progress edit.
+  if (syncedKey !== rulesKey) {
+    setSyncedKey(rulesKey)
+    setDraft(rules)
+  }
+
   const updateRule = (key: NumericRuleKey, rawValue: string) => {
     const value = Number(rawValue)
-    onChange({ ...rules, [key]: Number.isFinite(value) ? value : rules[key] }, { kind: 'number', key })
+    setDraft((current) => ({ ...current, [key]: Number.isFinite(value) ? value : current[key] }))
   }
   const updateRuleToggle = (key: BoolRuleKey, value: boolean) => {
-    onChange({ ...rules, [key]: value }, { kind: 'toggle', key })
+    setDraft((current) => ({ ...current, [key]: value }))
   }
 
   return (
@@ -62,14 +81,14 @@ export function RulesEditor({
           <label key={field.key} className="rule-control">
             <span>
               {field.label}
-              <strong>{rules[field.key]}</strong>
+              <strong>{draft[field.key]}</strong>
             </span>
             <input
               type="range"
               min={field.min}
               max={field.max}
               step={field.step}
-              value={rules[field.key]}
+              value={draft[field.key]}
               onChange={(event) => updateRule(field.key, event.target.value)}
             />
           </label>
@@ -81,7 +100,7 @@ export function RulesEditor({
           <label key={toggle.key} className="rule-toggle">
             <input
               type="checkbox"
-              checked={rules[toggle.key] ?? RULE_TOGGLE_DEFAULTS[toggle.key]}
+              checked={draft[toggle.key] ?? RULE_TOGGLE_DEFAULTS[toggle.key]}
               onChange={(event) => updateRuleToggle(toggle.key, event.target.checked)}
             />
             <span>
@@ -90,6 +109,27 @@ export function RulesEditor({
             </span>
           </label>
         ))}
+      </div>
+      <div className="rule-apply-bar">
+        <div className="rule-mode" role="radiogroup" aria-label="再計算の方法">
+          <label className={mode === 'all' ? 'active' : ''}>
+            <input type="radio" name={radioName} checked={mode === 'all'} onChange={() => setMode('all')} />
+            <span>
+              <strong>最初から再計算</strong>
+              <em>過去も含め全試合を新しい配点で計算し直す</em>
+            </span>
+          </label>
+          <label className={mode === 'forward' ? 'active' : ''}>
+            <input type="radio" name={radioName} checked={mode === 'forward'} onChange={() => setMode('forward')} />
+            <span>
+              <strong>変えた時から</strong>
+              <em>これから始まる試合だけ新しい配点（過去は固定）</em>
+            </span>
+          </label>
+        </div>
+        <button type="button" className="room-primary" onClick={() => onApply(draft, mode)}>
+          {busyLabel || '配点を適用'}
+        </button>
       </div>
     </>
   )
