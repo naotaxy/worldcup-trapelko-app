@@ -2664,7 +2664,8 @@ input {
   font-size: 0.78rem;
   color: rgba(200, 215, 255, 0.7);
 }
-.room-field input {
+.room-field input,
+.room-field select {
   padding: 10px 12px;
   border-radius: 11px;
   font-size: 0.95rem;
@@ -2672,7 +2673,12 @@ input {
   background: rgba(8, 22, 54, 0.5);
   color: #eaf0ff;
 }
-.room-field input:focus {
+.room-field select {
+  width: 100%;
+  cursor: pointer;
+}
+.room-field input:focus,
+.room-field select:focus {
   outline: none;
   border-color: rgba(255, 200, 84, 0.5);
 }

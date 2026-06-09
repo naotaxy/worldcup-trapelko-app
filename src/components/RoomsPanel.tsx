@@ -177,6 +177,7 @@ function RoomEntry({
   const [roomName, setRoomName] = useState('')
   const [passphrase, setPassphrase] = useState('')
   const [picksPerPlayer, setPicksPerPlayer] = useState(8)
+  const [maxPlayers, setMaxPlayers] = useState(8)
   const [joinCode, setJoinCode] = useState('')
 
   const doCreate = async () => {
@@ -190,6 +191,7 @@ function RoomEntry({
       nickname: nickname.trim(),
       passphrase: passphrase.trim() || undefined,
       picksPerPlayer,
+      maxPlayers,
     })
     onBusy(false)
     if (res.ok && res.code && res.token && res.room) onJoined({ code: res.code, token: res.token }, res.room)
@@ -236,14 +238,24 @@ function RoomEntry({
             <input value={passphrase} maxLength={64} onChange={(e) => setPassphrase(e.target.value)} placeholder="空欄なら誰でも参加可" />
           </label>
           <label className="room-field">
+            <span>人数（最大）</span>
+            <select value={maxPlayers} onChange={(e) => setMaxPlayers(Number(e.target.value))}>
+              {[2, 3, 4, 5, 6, 7, 8].map((n) => (
+                <option key={n} value={n}>
+                  {n}人
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="room-field">
             <span>1人の選択数</span>
-            <input
-              type="number"
-              min={1}
-              max={12}
-              value={picksPerPlayer}
-              onChange={(e) => setPicksPerPlayer(Math.max(1, Math.min(12, Number(e.target.value) || 8)))}
-            />
+            <select value={picksPerPlayer} onChange={(e) => setPicksPerPlayer(Number(e.target.value))}>
+              {[4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
+                <option key={n} value={n}>
+                  {n}か国
+                </option>
+              ))}
+            </select>
           </label>
           <button type="button" className="room-primary" disabled={busy} onClick={doCreate}>
             <Plus size={16} /> ルームを作成
