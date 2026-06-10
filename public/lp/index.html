@@ -436,6 +436,31 @@
           animation: none;
         }
       }
+      .top-right {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .lang-switch {
+        display: inline-flex;
+        gap: 4px;
+      }
+      .lang-switch button {
+        min-height: 32px;
+        padding: 0 9px;
+        border-radius: 999px;
+        border: 1px solid rgba(232, 244, 255, 0.22);
+        background: rgba(255, 255, 255, 0.08);
+        color: #f4f8ff;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+      }
+      .lang-switch button.active {
+        border-color: rgba(255, 226, 130, 0.6);
+        background: rgba(255, 216, 80, 0.18);
+        color: #ffe49d;
+      }
       .cm {
         margin: 0 0 26px;
       }
@@ -517,23 +542,30 @@
   <body>
     <div class="page">
       <div class="countdown" id="countdown" aria-live="polite" aria-label="開幕までのカウントダウン">
-        <span class="cd-label">開幕まで</span>
+        <span class="cd-label" data-t="cdLabel">開幕まで</span>
         <div class="cd-units">
-          <span class="cd-unit"><b id="cd-days">--</b><i>日</i></span>
+          <span class="cd-unit"><b id="cd-days">--</b><i data-t="uDays">日</i></span>
           <span class="cd-sep">:</span>
-          <span class="cd-unit"><b id="cd-hours">--</b><i>時間</i></span>
+          <span class="cd-unit"><b id="cd-hours">--</b><i data-t="uHours">時間</i></span>
           <span class="cd-sep">:</span>
-          <span class="cd-unit"><b id="cd-mins">--</b><i>分</i></span>
+          <span class="cd-unit"><b id="cd-mins">--</b><i data-t="uMins">分</i></span>
           <span class="cd-sep">:</span>
-          <span class="cd-unit"><b id="cd-secs">--</b><i>秒</i></span>
+          <span class="cd-unit"><b id="cd-secs">--</b><i data-t="uSecs">秒</i></span>
         </div>
       </div>
       <header class="top">
         <div class="brand">
           <span class="brand-mark">WC</span>
-          <span>W杯2026 ドラフト集計アプリ</span>
+          <span data-t="brand">W杯2026 ドラフト集計アプリ</span>
         </div>
-        <a href="https://worldcup-trapelko-app.onrender.com/">アプリを開く</a>
+        <div class="top-right">
+          <div class="lang-switch" id="langSwitch" aria-label="Language">
+            <button type="button" data-lang="ja">日本語</button>
+            <button type="button" data-lang="en">EN</button>
+            <button type="button" data-lang="es">ES</button>
+          </div>
+          <a href="https://worldcup-trapelko-app.onrender.com/" data-t="openApp">アプリを開く</a>
+        </div>
       </header>
 
       <main>
@@ -545,15 +577,15 @@
             fetchpriority="high"
           />
           <div class="hero-content">
-            <p class="eyebrow">LINEグループで遊ぶW杯ドラフト</p>
-            <h1>国を取る。試合で順位が動く。</h1>
-            <p class="lead">
+            <p class="eyebrow" data-t="eyebrow">LINEグループで遊ぶW杯ドラフト</p>
+            <h1 data-t="h1">国を取る。試合で順位が動く。</h1>
+            <p class="lead" data-t="lead">
               出場国を友だち同士でドラフトし、試合結果に合わせてポイントと順位を追いかける共有ボードです。
               ルームを作ってURLを送るだけで、スマホからそのまま参加できます。
             </p>
             <div class="actions">
-              <a class="button" href="https://worldcup-trapelko-app.onrender.com/">アプリを開く</a>
-              <a class="button secondary" href="#how-to-play">遊び方を見る</a>
+              <a class="button" href="https://worldcup-trapelko-app.onrender.com/" data-t="openApp">アプリを開く</a>
+              <a class="button secondary" href="#how-to-play" data-t="seeHow">遊び方を見る</a>
             </div>
           </div>
         </section>
@@ -580,8 +612,8 @@
               decoding="async"
             />
             <figcaption>
-              <strong>順位がすぐ見える</strong>
-              <span>試合結果、保有国、配点を集計して、誰がどれくらいリードしているかをスマホで確認できます。</span>
+              <strong data-t="v0t">順位がすぐ見える</strong>
+              <span data-t="v0s">試合結果、保有国、配点を集計して、誰がどれくらいリードしているかをスマホで確認できます。</span>
             </figcaption>
           </figure>
           <figure class="visual-card">
@@ -592,8 +624,8 @@
               decoding="async"
             />
             <figcaption>
-              <strong>ドラフトの場ができる</strong>
-              <span>各自が非公開で国を選び、被った国はルーレットで決定。LINEグループの企画として始めやすい構成です。</span>
+              <strong data-t="v1t">ドラフトの場ができる</strong>
+              <span data-t="v1s">各自が非公開で国を選び、被った国はルーレットで決定。LINEグループの企画として始めやすい構成です。</span>
             </figcaption>
           </figure>
           <figure class="visual-card">
@@ -604,8 +636,8 @@
               decoding="async"
             />
             <figcaption>
-              <strong>試合日がイベントになる</strong>
-              <span>応援する国が増えるので、予選から決勝までグループ全員で結果を追いかけやすくなります。</span>
+              <strong data-t="v2t">試合日がイベントになる</strong>
+              <span data-t="v2s">応援する国が増えるので、予選から決勝までグループ全員で結果を追いかけやすくなります。</span>
             </figcaption>
           </figure>
         </section>
@@ -613,18 +645,18 @@
         <section class="feature-row" aria-label="主な機能">
           <article class="feature-card">
             <span class="feature-number">01</span>
-            <h2>ルームで遊ぶ</h2>
-            <p>合言葉つきのルームを作成し、最大8人で参加。URLを共有すれば、スマホからすぐに入れます。</p>
+            <h2 data-t="f0t">ルームで遊ぶ</h2>
+            <p data-t="f0p">合言葉つきのルームを作成し、最大8人で参加。URLを共有すれば、スマホからすぐに入れます。</p>
           </article>
           <article class="feature-card">
             <span class="feature-number">02</span>
-            <h2>非公開ピック</h2>
-            <p>狙う国を秘密で選択。公開後、同じ国に3人以上が集まった場合はルーレットで決定します。</p>
+            <h2 data-t="f1t">非公開ピック</h2>
+            <p data-t="f1p">狙う国を秘密で選択。公開後、同じ国に3人以上が集まった場合はルーレットで決定します。</p>
           </article>
           <article class="feature-card">
             <span class="feature-number">03</span>
-            <h2>順位と予想</h2>
-            <p>ランキングだけでなく、最終予想の平均値と中央値も確認できるので、差が開いても最後まで追えます。</p>
+            <h2 data-t="f2t">順位と予想</h2>
+            <p data-t="f2p">ランキングだけでなく、最終予想の平均値と中央値も確認できるので、差が開いても最後まで追えます。</p>
           </article>
         </section>
 
@@ -636,12 +668,12 @@
             decoding="async"
           />
           <div class="story-copy">
-            <h2>大会中の楽しみ方</h2>
-            <p>
+            <h2 data-t="storyT">大会中の楽しみ方</h2>
+            <p data-t="storyP0">
               W杯2026の観戦を、ただ試合を見るだけで終わらせないためのドラフト集計アプリです。参加者はそれぞれ出場国を選び、
               試合結果やボーナスに応じてポイントを獲得します。
             </p>
-            <p>
+            <p data-t="storyP1">
               ランキングは自動で並び替わり、予選で苦しくなった参加者向けの救済ルーレットや、最終予想グラフも使えます。
               少人数の観戦グループや仲間内の企画に向いた、スマホ中心の共有ボードです。
             </p>
@@ -649,12 +681,12 @@
         </section>
 
         <section class="final-cta" aria-label="アプリを開始">
-          <h2>LINEグループにURLを貼って、すぐ始める。</h2>
-          <p>
+          <h2 data-t="ctaT">LINEグループにURLを貼って、すぐ始める。</h2>
+          <p data-t="ctaP">
             ルームを作成して、参加者にURLを共有してください。ドラフト、公開、ルーレット、順位確認までスマホで進められます。
           </p>
           <div class="actions">
-            <a class="button" href="https://worldcup-trapelko-app.onrender.com/">アプリを開く</a>
+            <a class="button" href="https://worldcup-trapelko-app.onrender.com/" data-t="openApp">アプリを開く</a>
           </div>
         </section>
       </main>
@@ -681,7 +713,7 @@
           var diff = target - Date.now()
           if (diff <= 0) {
             if (box) box.classList.add('live')
-            if (label) label.textContent = '開催中！'
+            if (label) label.textContent = window.__lpLiveText ? window.__lpLiveText() : '開催中！'
             elDays.textContent = '0'
             elHours.textContent = '00'
             elMins.textContent = '00'
@@ -702,6 +734,71 @@
         var cm = document.getElementById('cm')
         var v = cm ? cm.querySelector('video') : null
         if (v && cm) v.addEventListener('error', function () { cm.style.display = 'none' }, true)
+      })()
+      ;(function () {
+        // 言語切替 (日本語/英語/スペイン語)。未訳は日本語のまま。設定はアプリと同じ wc-lang を共有。
+        var DICT = {
+          en: {
+            cdLabel: 'Until kickoff', uDays: 'days', uHours: 'hours', uMins: 'min', uSecs: 'sec', live: 'Live now!',
+            brand: 'World Cup 2026 Draft Board', openApp: 'Open the app', seeHow: 'See how to play',
+            eyebrow: 'A World Cup draft to play with friends',
+            h1: 'Draft countries. Results move the ranking.',
+            lead: 'Draft the competing nations with your friends and follow points and rankings as results come in. Create a room, share the URL, and everyone joins from their phone.',
+            v0t: 'See the ranking at a glance', v0s: 'Results, owned countries and scoring are tallied so you can see who is leading - right on your phone.',
+            v1t: 'A place to draft', v1s: 'Everyone picks countries privately; duplicated countries are decided by roulette. Easy to start as a group activity.',
+            v2t: 'Match days become events', v2s: 'You have more nations to cheer for, so the whole group follows results from the group stage to the final.',
+            f0t: 'Play in rooms', f0p: 'Create a room with a passphrase for up to 8 players. Share the URL and join instantly from a phone.',
+            f1t: 'Secret picks', f1p: 'Pick your countries in secret. After the reveal, if 3+ choose the same country it is decided by roulette.',
+            f2t: 'Ranking & forecast', f2p: 'See not just the ranking but the average and median of the final forecast, so you can follow to the end.',
+            storyT: 'How to enjoy it during the tournament',
+            storyP0: 'A draft board that makes watching World Cup 2026 more than just watching. Each player picks competing nations and earns points from results and bonuses.',
+            storyP1: 'The ranking sorts automatically, with a rescue roulette for players who struggle in the group stage and a final forecast graph. A phone-first shared board for small watch groups.',
+            ctaT: 'Paste the URL in your group chat and start now.',
+            ctaP: 'Create a room and share the URL. Draft, reveal, roulette and ranking all work from a phone.'
+          },
+          es: {
+            cdLabel: 'Hasta el inicio', uDays: 'dias', uHours: 'horas', uMins: 'min', uSecs: 'seg', live: 'En directo!',
+            brand: 'Marcador de Draft del Mundial 2026', openApp: 'Abrir la app', seeHow: 'Como se juega',
+            eyebrow: 'Un draft del Mundial para jugar con amigos',
+            h1: 'Elige paises. Los resultados mueven la clasificacion.',
+            lead: 'Haz un draft de las selecciones con tus amigos y sigue los puntos y la clasificacion segun llegan los resultados. Crea una sala, comparte la URL y todos entran desde el movil.',
+            v0t: 'Ve la clasificacion de un vistazo', v0s: 'Se suman resultados, paises y puntos para ver quien va lider, desde tu movil.',
+            v1t: 'Un lugar para el draft', v1s: 'Cada uno elige paises en privado; los paises repetidos se deciden por ruleta. Facil de empezar en grupo.',
+            v2t: 'Los dias de partido son eventos', v2s: 'Tienes mas selecciones a las que animar, asi que el grupo sigue los resultados de la fase de grupos a la final.',
+            f0t: 'Juega en salas', f0p: 'Crea una sala con contrasena para hasta 8 jugadores. Comparte la URL y entra al instante desde el movil.',
+            f1t: 'Elecciones secretas', f1p: 'Elige tus paises en secreto. Tras la revelacion, si 3+ eligen el mismo pais se decide por ruleta.',
+            f2t: 'Clasificacion y pronostico', f2p: 'Ve no solo la clasificacion sino la media y la mediana del pronostico final, para seguir hasta el final.',
+            storyT: 'Como disfrutarlo durante el torneo',
+            storyP0: 'Un marcador para que ver el Mundial 2026 sea mas que ver. Cada jugador elige selecciones y gana puntos por resultados y bonus.',
+            storyP1: 'La clasificacion se ordena sola, con una ruleta de rescate para quien lo pase mal en la fase de grupos y un grafico de pronostico final. Un tablero pensado para el movil y grupos pequenos.',
+            ctaT: 'Pega la URL en tu chat de grupo y empieza ya.',
+            ctaP: 'Crea una sala y comparte la URL. Draft, revelacion, ruleta y clasificacion funcionan desde el movil.'
+          }
+        }
+        var els = Array.prototype.slice.call(document.querySelectorAll('[data-t]'))
+        els.forEach(function (el) { el.setAttribute('data-ja', el.textContent) })
+        var current = 'ja'
+        window.__lpLiveText = function () { return current === 'ja' ? '開催中！' : (DICT[current] ? DICT[current].live : '開催中！') }
+        function apply(lang) {
+          current = lang === 'en' || lang === 'es' ? lang : 'ja'
+          try { localStorage.setItem('wc-lang', current) } catch (e) {}
+          document.documentElement.lang = current
+          els.forEach(function (el) {
+            var key = el.getAttribute('data-t')
+            if (current === 'ja') el.textContent = el.getAttribute('data-ja')
+            else { var v = DICT[current][key]; if (v != null) el.textContent = v }
+          })
+          var btns = document.querySelectorAll('#langSwitch button')
+          for (var i = 0; i < btns.length; i++) btns[i].classList.toggle('active', btns[i].getAttribute('data-lang') === current)
+        }
+        var sw = document.getElementById('langSwitch')
+        if (sw) sw.addEventListener('click', function (e) {
+          var b = e.target.closest('button')
+          if (b) apply(b.getAttribute('data-lang'))
+        })
+        var saved = 'ja'
+        try { saved = localStorage.getItem('wc-lang') || 'ja' } catch (e) {}
+        apply(saved)
       })()
     </script>
   </body>
