@@ -222,9 +222,9 @@ const dict: Record<'en' | 'es', Record<string, string>> = {
     'ルームコードとニックネームを入力してください': 'Enter a room code and a nickname',
     'ルームを作成できませんでした': 'Could not create the room',
     '参加できませんでした': 'Could not join',
-    待機中…: 'Waiting…',
+    '待機中…': 'Waiting…',
     'コードを共有して仲間を集めましょう。': 'Share the code to gather your group.',
-    被り3人以上はなし: 'No 3-way collisions',
+    '被り3人以上はなし': 'No 3-way collisions',
     'このルームの配点です。変更できるのはルームのホストだけです。': 'These are this room’s scoring rules. Only the host can change them.',
   },
   es: {
@@ -306,9 +306,9 @@ const dict: Record<'en' | 'es', Record<string, string>> = {
     'ルームコードとニックネームを入力してください': 'Escribe un código de sala y un apodo',
     'ルームを作成できませんでした': 'No se pudo crear la sala',
     '参加できませんでした': 'No se pudo unir',
-    待機中…: 'Esperando…',
+    '待機中…': 'Esperando…',
     'コードを共有して仲間を集めましょう。': 'Comparte el código para reunir a tu grupo.',
-    被り3人以上はなし: 'Sin choques de 3+',
+    '被り3人以上はなし': 'Sin choques de 3+',
     'このルームの配点です。変更できるのはルームのホストだけです。': 'Estos son los puntos de la sala. Solo el anfitrión puede cambiarlos.',
   },
 }
