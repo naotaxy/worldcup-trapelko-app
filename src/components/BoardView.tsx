@@ -18,6 +18,7 @@ import type { BracketMatch, BracketRound, BracketTeam } from '../lib/bracket'
 import { ProjectionGraph } from './ProjectionGraph'
 import { GoogleMatchCard } from './GoogleMatchCard'
 import { TeamDetailModal } from './TeamDetailModal'
+import { formatKickoff, useSettings } from '../lib/i18n'
 
 const maxTeamsPerMember = 8
 
@@ -296,7 +297,8 @@ function KnockoutBracket({ id, rounds, loaded }: { id: string; rounds: BracketRo
 }
 
 function BracketCard({ match }: { match: BracketMatch }) {
-  const when = formatJst(match.date)
+  const { lang, tz } = useSettings()
+  const when = formatKickoff(match.date, tz, lang)
   return (
     <div className={match.status === 'post' ? 'bracket-card done' : 'bracket-card'}>
       {when ? <div className="bracket-date">{when}</div> : null}
@@ -357,21 +359,6 @@ function teamNameJa(teamId: string): string {
   return teamNamesJa[teamId] || teams.find((team) => team.id === teamId)?.name || teamId
 }
 
-function formatJst(iso?: string): string {
-  if (!iso) return ''
-  const parsed = new Date(iso)
-  if (Number.isNaN(parsed.getTime())) return ''
-  return (
-    new Intl.DateTimeFormat('ja-JP', {
-      timeZone: 'Asia/Tokyo',
-      month: 'numeric',
-      day: 'numeric',
-      weekday: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(parsed) + ' JST'
-  )
-}
 
 function formatSigned(value: number): string {
   if (value > 0) return `+${value}`

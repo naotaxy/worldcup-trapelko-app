@@ -23,6 +23,8 @@ import { CountrySlot, type SlotCountry } from './components/CountrySlot'
 import { GoogleMatchCard } from './components/GoogleMatchCard'
 import { RoomsPanel } from './components/RoomsPanel'
 import { RulesEditor } from './components/RulesEditor'
+import { SettingsBar } from './components/SettingsBar'
+import { useT } from './lib/i18n'
 import {
   defaultRules,
   demoMembers as seedMembers,
@@ -181,6 +183,7 @@ function App() {
   const [rulesTimeline, setRulesTimeline] = useState<RulesTimeline>(() =>
     normalizeTimeline(initialLocalState()?.rulesTimeline, initialLocalState()?.rules ?? defaultRules),
   )
+  const t = useT()
   const [awards, setAwards] = useState<AwardSettings>(() => initialLocalState()?.awards ?? defaultAwards)
   const [projectionMode, setProjectionMode] = useState<ProjectionMode>('standard')
   const [liveFixtures, setLiveFixtures] = useState<Match[]>(() => {
@@ -541,14 +544,16 @@ function App() {
         </div>
       </div>
 
+      <SettingsBar />
+
       <nav className="mobile-section-tabs" aria-label="sections">
         <a href="#rooms">
           <Users size={15} />
-          ルーム
+          {t('ルーム')}
         </a>
         <a href="#help">
           <HelpCircle size={15} />
-          使い方
+          {t('使い方')}
         </a>
         {boardUnlocked ? (
           <>

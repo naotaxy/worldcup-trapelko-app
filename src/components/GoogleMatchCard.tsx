@@ -1,5 +1,6 @@
 import { teamNamesJa, teams } from '../data/worldCup2026'
 import { flagUrl, matchWasPlayed } from '../logic/score'
+import { formatDateShort, formatKickoff, useSettings } from '../lib/i18n'
 import type { Match, Team } from '../types'
 
 export function GoogleMatchCard({
@@ -23,6 +24,7 @@ export function GoogleMatchCard({
   awayOdds?: number
   drawOdds?: number
 }) {
+  const { lang, tz } = useSettings()
   const homeTeam = teams.find((team) => team.id === match.homeTeamId) || teams[0]
   const awayTeam = teams.find((team) => team.id === match.awayTeamId) || teams[0]
   const played = matchWasPlayed(match)
@@ -30,7 +32,7 @@ export function GoogleMatchCard({
   return (
     <button type="button" className={selected ? 'google-match-card active' : 'google-match-card'} onClick={onSelect}>
       <div className="google-match-meta">
-        <span>{kickoff ? formatJst(kickoff) : formatDateJa(match.date)}</span>
+        <span>{kickoff ? formatKickoff(kickoff, tz, lang) : formatDateShort(match.date, tz, lang)}</span>
         <strong>グループ{match.group}</strong>
         {drawOdds != null ? <span className="draw-odds">引分 {drawOdds.toFixed(2)}倍</span> : null}
         <em>{played ? '終了' : '試合前'}</em>
@@ -85,24 +87,3 @@ function teamNameJa(teamId: string): string {
   return teamNamesJa[teamId] || teams.find((team) => team.id === teamId)?.name || teamId
 }
 
-function formatDateJa(date: string): string {
-  const parsed = new Date(`${date}T00:00:00`)
-  if (Number.isNaN(parsed.getTime())) return date
-  return new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' }).format(parsed)
-}
-
-function formatJst(iso?: string): string {
-  if (!iso) return ''
-  const parsed = new Date(iso)
-  if (Number.isNaN(parsed.getTime())) return ''
-  return (
-    new Intl.DateTimeFormat('ja-JP', {
-      timeZone: 'Asia/Tokyo',
-      month: 'numeric',
-      day: 'numeric',
-      weekday: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(parsed) + ' JST'
-  )
-}

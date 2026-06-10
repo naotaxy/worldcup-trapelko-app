@@ -4,6 +4,7 @@ import { playerInfoJa } from '../data/playerInfoJa'
 import type { PdfPlayer } from '../data/wcPdf'
 import { teamNamesJa, teams } from '../data/worldCup2026'
 import { flagUrl, type TeamBreakdown } from '../logic/score'
+import { formatDateShort, formatKickoff, useSettings } from '../lib/i18n'
 import type { Team } from '../types'
 import type { PlayerStat } from '../lib/api'
 
@@ -72,6 +73,7 @@ export function TeamDetailModal({
     MF: players.filter((player) => player.pos === 'MF'),
     FW: players.filter((player) => player.pos === 'FW'),
   }
+  const { lang, tz } = useSettings()
   const { hatTricks, yellowCards, redCards, ownGoals } = breakdown.tallies
   const nextMatchOddsText = nextMatch
     ? [
@@ -128,7 +130,7 @@ export function TeamDetailModal({
           <span>残り試合 {remaining}</span>
           {nextMatch ? (
             <span>
-              次戦 {nextMatch.kickoff ? formatJst(nextMatch.kickoff) : formatDateJa(nextMatch.date)} {nextMatch.home ? 'vs' : '@'}{' '}
+              次戦 {nextMatch.kickoff ? formatKickoff(nextMatch.kickoff, tz, lang) : formatDateShort(nextMatch.date, tz, lang)} {nextMatch.home ? 'vs' : '@'}{' '}
               {nextMatch.opponentName}
             </span>
           ) : (
@@ -251,27 +253,6 @@ function playerAge(dob: string): number | null {
   return age
 }
 
-function formatDateJa(date: string): string {
-  const parsed = new Date(`${date}T00:00:00`)
-  if (Number.isNaN(parsed.getTime())) return date
-  return new Intl.DateTimeFormat('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' }).format(parsed)
-}
-
-function formatJst(iso?: string): string {
-  if (!iso) return ''
-  const parsed = new Date(iso)
-  if (Number.isNaN(parsed.getTime())) return ''
-  return (
-    new Intl.DateTimeFormat('ja-JP', {
-      timeZone: 'Asia/Tokyo',
-      month: 'numeric',
-      day: 'numeric',
-      weekday: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    }).format(parsed) + ' JST'
-  )
-}
 
 function formatSigned(value: number): string {
   if (value > 0) return `+${value}`
