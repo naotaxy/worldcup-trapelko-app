@@ -1066,14 +1066,15 @@ const helpSteps: Array<{ img: string; title: string; body: string }> = [
 ]
 
 function HelpPanel() {
+  const t = useT()
   return (
     <details className="panel help-panel" id="help">
       <summary className="rescue-summary">
         <span>
           <HelpCircle size={18} />
-          <strong>使い方</strong>
+          <strong>{t('使い方')}</strong>
         </span>
-        <em>はじめての方へ</em>
+        <em>{t('はじめての方へ')}</em>
       </summary>
       <ol className="help-steps">
         {helpSteps.map((step, index) => (
@@ -1083,8 +1084,8 @@ function HelpPanel() {
               <span className="help-step-num">{index + 1}</span>
             </div>
             <div className="help-step-text">
-              <strong>{step.title}</strong>
-              <p>{step.body}</p>
+              <strong>{t(step.title)}</strong>
+              <p>{t(step.body)}</p>
             </div>
           </li>
         ))}
@@ -1094,6 +1095,7 @@ function HelpPanel() {
 }
 
 function PublicRulesPanel({ rules }: { rules: Rules }) {
+  const t = useT()
   const items: Array<[string, number]> = [
     ['勝ち', rules.win],
     ['PK勝ち', rules.penaltyWin],
@@ -1116,15 +1118,15 @@ function PublicRulesPanel({ rules }: { rules: Rules }) {
       <summary className="rescue-summary">
         <span>
           <Settings size={18} />
-          <strong>配点ルール</strong>
+          <strong>{t('配点ルール')}</strong>
         </span>
-        <em>ポイントの付き方</em>
+        <em>{t('ポイントの付き方')}</em>
       </summary>
-      <p className="rules-readonly-note">獲得した国の成績でポイントが入り、保有国の合計があなたの得点になります。</p>
+      <p className="rules-readonly-note">{t('獲得した国の成績でポイントが入り、保有国の合計があなたの得点になります。')}</p>
       <ul className="rules-readonly-list">
         {items.map(([label, value]) => (
           <li key={label}>
-            <span>{label}</span>
+            <span>{t(label)}</span>
             <strong>{value > 0 ? `+${value}` : value}</strong>
           </li>
         ))}

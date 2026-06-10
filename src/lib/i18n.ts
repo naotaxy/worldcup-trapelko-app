@@ -226,6 +226,29 @@ const dict: Record<'en' | 'es', Record<string, string>> = {
     'コードを共有して仲間を集めましょう。': 'Share the code to gather your group.',
     '被り3人以上はなし': 'No 3-way collisions',
     'このルームの配点です。変更できるのはルームのホストだけです。': 'These are this room’s scoring rules. Only the host can change them.',
+    'はじめての方へ': 'New here?',
+    配点ルール: 'Scoring',
+    'ポイントの付き方': 'How points work',
+    '獲得した国の成績でポイントが入り、保有国の合計があなたの得点になります。':
+      'Points come from how your countries perform; your score is the total of the countries you own.',
+    'ルームを作る・参加する': 'Create or join a room',
+    '「ルーム対戦」を開いて、合言葉つきでルームを作成しコードを共有。仲間はコードと合言葉で参加します。':
+      'Open "Rooms", create a room with a passphrase and share the code. Friends join with the code and passphrase.',
+    'ニックネームで集まる': 'Gather by nickname',
+    '名前を入れて最大8人まで参加。全員そろったら、ホストが「ピック開始」を押します。':
+      'Up to 8 players join with a nickname. When everyone is in, the host taps "Start picking".',
+    '国を秘密に選ぶ': 'Pick countries secretly',
+    '各自が自分の端末で国を選んで提出。みんなの選択は公開まで見えません。':
+      'Each player picks on their own device. Nobody sees the picks until the reveal.',
+    '公開＆ルーレット': 'Reveal & roulette',
+    'ホストが公開。3人以上が同じ国を選ぶと、その全員がルーレットでランダムな国に変わります（1国は最大2人まで）。':
+      'The host reveals. If 3+ pick the same country, they all spin a roulette for a random one (max 2 owners per country).',
+    '結果で自動採点': 'Auto-scored by results',
+    '本大会の試合結果で、持っている国にポイントが入り、順位はリアルタイムで更新。配点は「配点ルール」で確認できます。':
+      'Real results award points to your countries and the ranking updates live. See "Scoring" for the values.',
+    黄カード4枚: '4 yellow cards',
+    レッドカード: 'Red card',
+    オウンゴール: 'Own goal',
   },
   es: {
     試合: 'Partidos',
@@ -310,5 +333,28 @@ const dict: Record<'en' | 'es', Record<string, string>> = {
     'コードを共有して仲間を集めましょう。': 'Comparte el código para reunir a tu grupo.',
     '被り3人以上はなし': 'Sin choques de 3+',
     'このルームの配点です。変更できるのはルームのホストだけです。': 'Estos son los puntos de la sala. Solo el anfitrión puede cambiarlos.',
+    'はじめての方へ': '¿Primera vez?',
+    配点ルール: 'Puntuación',
+    'ポイントの付き方': 'Cómo se puntúa',
+    '獲得した国の成績でポイントが入り、保有国の合計があなたの得点になります。':
+      'Los puntos vienen del rendimiento de tus países; tu puntuación es la suma de los países que tienes.',
+    'ルームを作る・参加する': 'Crear o unirse a una sala',
+    '「ルーム対戦」を開いて、合言葉つきでルームを作成しコードを共有。仲間はコードと合言葉で参加します。':
+      'Abre "Salas", crea una sala con contraseña y comparte el código. Tus amigos entran con el código y la contraseña.',
+    'ニックネームで集まる': 'Reúnanse por apodo',
+    '名前を入れて最大8人まで参加。全員そろったら、ホストが「ピック開始」を押します。':
+      'Hasta 8 jugadores entran con un apodo. Cuando estén todos, el anfitrión pulsa "Empezar a elegir".',
+    '国を秘密に選ぶ': 'Elige países en secreto',
+    '各自が自分の端末で国を選んで提出。みんなの選択は公開まで見えません。':
+      'Cada jugador elige en su dispositivo. Nadie ve las elecciones hasta la revelación.',
+    '公開＆ルーレット': 'Revelar y ruleta',
+    'ホストが公開。3人以上が同じ国を選ぶと、その全員がルーレットでランダムな国に変わります（1国は最大2人まで）。':
+      'El anfitrión revela. Si 3+ eligen el mismo país, todos giran una ruleta por uno aleatorio (máx. 2 dueños por país).',
+    '結果で自動採点': 'Puntuación automática',
+    '本大会の試合結果で、持っている国にポイントが入り、順位はリアルタイムで更新。配点は「配点ルール」で確認できます。':
+      'Los resultados reales dan puntos a tus países y la clasificación se actualiza en vivo. Consulta "Puntuación" para los valores.',
+    黄カード4枚: '4 tarjetas amarillas',
+    レッドカード: 'Tarjeta roja',
+    オウンゴール: 'Autogol',
   },
 }
