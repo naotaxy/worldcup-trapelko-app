@@ -1,6 +1,7 @@
 import { useId, useState } from 'react'
 import type { ReactNode } from 'react'
 import type { Rules } from '../types'
+import { useT } from '../lib/i18n'
 import type { RulesUpdateMode } from '../lib/publicRules'
 
 export type NumericRuleKey = { [K in keyof Rules]-?: Rules[K] extends number ? K : never }[keyof Rules]
@@ -53,6 +54,7 @@ export function RulesEditor({
   children?: ReactNode
   busyLabel?: string
 }) {
+  const t = useT()
   const radioName = useId()
   const rulesKey = JSON.stringify(rules)
   const [syncedKey, setSyncedKey] = useState(rulesKey)
@@ -80,7 +82,7 @@ export function RulesEditor({
         {RULE_FIELDS.map((field) => (
           <label key={field.key} className="rule-control">
             <span>
-              {field.label}
+              {t(field.label)}
               <strong>{draft[field.key]}</strong>
             </span>
             <input
@@ -104,8 +106,8 @@ export function RulesEditor({
               onChange={(event) => updateRuleToggle(toggle.key, event.target.checked)}
             />
             <span>
-              <strong>{toggle.label}</strong>
-              <em>{toggle.hint}</em>
+              <strong>{t(toggle.label)}</strong>
+              <em>{t(toggle.hint)}</em>
             </span>
           </label>
         ))}
@@ -115,20 +117,20 @@ export function RulesEditor({
           <label className={mode === 'all' ? 'active' : ''}>
             <input type="radio" name={radioName} checked={mode === 'all'} onChange={() => setMode('all')} />
             <span>
-              <strong>最初から再計算</strong>
-              <em>過去も含め全試合を新しい配点で計算し直す</em>
+              <strong>{t('最初から再計算')}</strong>
+              <em>{t('過去も含め全試合を新しい配点で計算し直す')}</em>
             </span>
           </label>
           <label className={mode === 'forward' ? 'active' : ''}>
             <input type="radio" name={radioName} checked={mode === 'forward'} onChange={() => setMode('forward')} />
             <span>
-              <strong>変えた時から</strong>
-              <em>これから始まる試合だけ新しい配点（過去は固定）</em>
+              <strong>{t('変えた時から')}</strong>
+              <em>{t('これから始まる試合だけ新しい配点（過去は固定）')}</em>
             </span>
           </label>
         </div>
         <button type="button" className="room-primary" onClick={() => onApply(draft, mode)}>
-          {busyLabel || '配点を適用'}
+          {busyLabel || t('配点を適用')}
         </button>
       </div>
     </>
@@ -136,13 +138,14 @@ export function RulesEditor({
 }
 
 export function RulesSummary({ rules }: { rules: Rules }) {
+  const t = useT()
   return (
     <>
-      <p className="rules-readonly-note">このルームの配点です。変更できるのはルームのホストだけです。</p>
+      <p className="rules-readonly-note">{t('このルームの配点です。変更できるのはルームのホストだけです。')}</p>
       <ul className="rules-readonly-list">
         {RULE_FIELDS.map((field) => (
           <li key={field.key}>
-            <span>{field.label}</span>
+            <span>{t(field.label)}</span>
             <strong>{formatRuleValue(rules[field.key])}</strong>
           </li>
         ))}
@@ -150,7 +153,7 @@ export function RulesSummary({ rules }: { rules: Rules }) {
       <ul className="rules-readonly-list room-rule-toggle-summary">
         {RULE_TOGGLES.map((toggle) => (
           <li key={toggle.key}>
-            <span>{toggle.label}</span>
+            <span>{t(toggle.label)}</span>
             <strong>{rules[toggle.key] ?? RULE_TOGGLE_DEFAULTS[toggle.key] ? 'ON' : 'OFF'}</strong>
           </li>
         ))}

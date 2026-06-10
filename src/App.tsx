@@ -594,9 +594,9 @@ function App() {
           <summary className="rescue-summary">
             <span>
               <Users size={18} />
-              <strong>ルーム対戦</strong>
+              <strong>{t('ルーム対戦')}</strong>
             </span>
-            <em>みんなで遊ぶ</em>
+            <em>{t('みんなで遊ぶ')}</em>
           </summary>
           <RoomsPanel
             awards={awards}

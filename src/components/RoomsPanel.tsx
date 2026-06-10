@@ -7,6 +7,7 @@ import type { AwardSettings, Group, Match, Member, Rules, TeamSelection } from '
 import type { PlayerStat } from '../lib/api'
 import type { BracketRound } from '../lib/bracket'
 import { buildRulesTimeline, currentRulesOf, normalizeRules, normalizeTimeline, type RulesUpdateMode } from '../lib/publicRules'
+import { useT } from '../lib/i18n'
 import { BoardView } from './BoardView'
 import { RulesEditor, RulesSummary } from './RulesEditor'
 import {
@@ -266,10 +267,11 @@ function RoomEntry({
   const [picksPerPlayer, setPicksPerPlayer] = useState(8)
   const [maxPlayers, setMaxPlayers] = useState(8)
   const [joinCode, setJoinCode] = useState('')
+  const t = useT()
 
   const doCreate = async () => {
     if (!nickname.trim() || !roomName.trim()) {
-      onError('ニックネームとルーム名を入力してください')
+      onError(t('ニックネームとルーム名を入力してください'))
       return
     }
     onBusy(true); onError('')
@@ -282,12 +284,12 @@ function RoomEntry({
     })
     onBusy(false)
     if (res.ok && res.code && res.token && res.room) onJoined({ code: res.code, token: res.token }, res.room)
-    else onError(res.error || 'ルームを作成できませんでした')
+    else onError(res.error || t('ルームを作成できませんでした'))
   }
 
   const doJoin = async () => {
     if (!nickname.trim() || !joinCode.trim()) {
-      onError('ルームコードとニックネームを入力してください')
+      onError(t('ルームコードとニックネームを入力してください'))
       return
     }
     onBusy(true); onError('')
@@ -295,37 +297,37 @@ function RoomEntry({
     const res = await joinRoom(code, { nickname: nickname.trim(), passphrase: passphrase.trim() || undefined })
     onBusy(false)
     if (res.ok && res.token && res.room) onJoined({ code, token: res.token }, res.room)
-    else onError(res.error || '参加できませんでした')
+    else onError(res.error || t('参加できませんでした'))
   }
 
   return (
     <div className="room-entry">
       <div className="room-tabs">
         <button type="button" className={tab === 'create' ? 'active' : ''} onClick={() => setTab('create')}>
-          ルームを作る
+          {t('ルームを作る')}
         </button>
         <button type="button" className={tab === 'join' ? 'active' : ''} onClick={() => setTab('join')}>
-          参加する
+          {t('参加する')}
         </button>
       </div>
 
       <label className="room-field">
-        <span>ニックネーム</span>
-        <input value={nickname} maxLength={24} onChange={(e) => setNickname(e.target.value)} placeholder="表示名" />
+        <span>{t('ニックネーム')}</span>
+        <input value={nickname} maxLength={24} onChange={(e) => setNickname(e.target.value)} placeholder={t('表示名')} />
       </label>
 
       {tab === 'create' ? (
         <>
           <label className="room-field">
-            <span>ルーム名</span>
-            <input value={roomName} maxLength={40} onChange={(e) => setRoomName(e.target.value)} placeholder="例: 金曜ドラフト" />
+            <span>{t('ルーム名')}</span>
+            <input value={roomName} maxLength={40} onChange={(e) => setRoomName(e.target.value)} placeholder={t('例: 金曜ドラフト')} />
           </label>
           <label className="room-field">
-            <span>合言葉 (任意)</span>
-            <input value={passphrase} maxLength={64} onChange={(e) => setPassphrase(e.target.value)} placeholder="空欄なら誰でも参加可" />
+            <span>{t('合言葉 (任意)')}</span>
+            <input value={passphrase} maxLength={64} onChange={(e) => setPassphrase(e.target.value)} placeholder={t('空欄なら誰でも参加可')} />
           </label>
           <label className="room-field">
-            <span>人数（最大）</span>
+            <span>{t('人数（最大）')}</span>
             <select value={maxPlayers} onChange={(e) => setMaxPlayers(Number(e.target.value))}>
               {[2, 3, 4, 5, 6, 7, 8].map((n) => (
                 <option key={n} value={n}>
@@ -335,7 +337,7 @@ function RoomEntry({
             </select>
           </label>
           <label className="room-field">
-            <span>1人の選択数</span>
+            <span>{t('1人の選択数')}</span>
             <select value={picksPerPlayer} onChange={(e) => setPicksPerPlayer(Number(e.target.value))}>
               {[4, 5, 6, 7, 8, 9, 10, 11, 12].map((n) => (
                 <option key={n} value={n}>
@@ -345,21 +347,21 @@ function RoomEntry({
             </select>
           </label>
           <button type="button" className="room-primary" disabled={busy} onClick={doCreate}>
-            <Plus size={16} /> ルームを作成
+            <Plus size={16} /> {t('ルームを作成')}
           </button>
         </>
       ) : (
         <>
           <label className="room-field">
-            <span>ルームコード</span>
-            <input value={joinCode} maxLength={8} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} placeholder="6文字のコード" />
+            <span>{t('ルームコード')}</span>
+            <input value={joinCode} maxLength={8} onChange={(e) => setJoinCode(e.target.value.toUpperCase())} placeholder={t('6文字のコード')} />
           </label>
           <label className="room-field">
-            <span>合言葉 (必要なら)</span>
-            <input value={passphrase} maxLength={64} onChange={(e) => setPassphrase(e.target.value)} placeholder="設定されている場合のみ" />
+            <span>{t('合言葉 (必要なら)')}</span>
+            <input value={passphrase} maxLength={64} onChange={(e) => setPassphrase(e.target.value)} placeholder={t('設定されている場合のみ')} />
           </label>
           <button type="button" className="room-primary" disabled={busy} onClick={doJoin}>
-            <Users size={16} /> 参加する
+            <Users size={16} /> {t('参加する')}
           </button>
         </>
       )}
@@ -539,6 +541,7 @@ function RoomReveal({
   projectionMode: ProjectionMode
   onProjectionMode: (mode: ProjectionMode) => void
 }) {
+  const t = useT()
   const [rulesLabel, setRulesLabel] = useState(youHost ? 'ホストのみ編集' : '閲覧のみ')
   const assignments = useMemo(() => room.assignments || [], [room.assignments])
   const roulette = assignments.filter((a) => a.source === 'roulette')
@@ -600,9 +603,9 @@ function RoomReveal({
         <summary className="rescue-summary">
           <span>
             <Settings size={18} />
-            <strong>配点調整</strong>
+            <strong>{t('配点調整')}</strong>
           </span>
-          <em>{rulesLabel}</em>
+          <em>{t(rulesLabel)}</em>
         </summary>
         {youHost ? (
           <RulesEditor rules={roomRules} onApply={(nextRules, mode) => updateRules(nextRules, mode)} />

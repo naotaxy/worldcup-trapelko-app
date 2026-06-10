@@ -18,7 +18,7 @@ import type { BracketMatch, BracketRound, BracketTeam } from '../lib/bracket'
 import { ProjectionGraph } from './ProjectionGraph'
 import { GoogleMatchCard } from './GoogleMatchCard'
 import { TeamDetailModal } from './TeamDetailModal'
-import { formatKickoff, useSettings } from '../lib/i18n'
+import { formatKickoff, useSettings, useT } from '../lib/i18n'
 
 const maxTeamsPerMember = 8
 
@@ -71,6 +71,7 @@ export function BoardView({
   const activeGroup = controlledActiveGroup ?? internalActiveGroup
   const effectiveProjectionMode = isPublic && projectionMode === 'historyDemo' ? 'standard' : projectionMode
   const sectionId = (id: string) => (isPublic ? `room-${id}` : id)
+  const t = useT()
 
   const groupStageComplete = useMemo(
     () => liveFixtures.length > 0 && liveFixtures.every((match) => match.result.home !== null && match.result.away !== null),
@@ -146,7 +147,7 @@ export function BoardView({
         <summary className="rescue-summary">
           <span>
             <Trophy size={18} />
-            <strong>グループ{activeGroup} 順位</strong>
+            <strong>{t('グループ')}{activeGroup} {t('順位')}</strong>
           </span>
           <em>{groupStageComplete ? '予選終了・タップで確認' : '国をタップで詳細'}</em>
         </summary>
@@ -176,7 +177,7 @@ export function BoardView({
               <img src={flagUrl(row.team.flag)} alt="" />
               <div className="standings-main">
                 <strong>{teamNameJa(row.team.id)}</strong>
-                <span>{teamOwnersByTeam.get(row.team.id) || '持ち主未定'}</span>
+                <span>{teamOwnersByTeam.get(row.team.id) || t('持ち主未定')}</span>
               </div>
               <div className="standings-stats">
                 <span>
@@ -195,7 +196,7 @@ export function BoardView({
 
       {isPublic ? (
         <section className="panel match-panel" id={sectionId('match-desk')}>
-          <PanelTitle icon={<Bell size={18} />} title="試合・結果" note="" />
+          <PanelTitle icon={<Bell size={18} />} title={t('試合・結果')} note="" />
           <div className="google-match-list">
             {activeMatches.map((match) => (
               <GoogleMatchCard
@@ -216,7 +217,7 @@ export function BoardView({
       ) : null}
 
       <section className="panel leaderboard-panel" id={sectionId('member-ranking')}>
-        <PanelTitle icon={<Medal size={18} />} title="参加者ランキング" note="総合ポイント" />
+        <PanelTitle icon={<Medal size={18} />} title={t('参加者ランキング')} note={t('総合ポイント')} />
         <div className="leader-list">
           {memberStandings.map((row) => (
             <article key={row.member.id} className="leader-row">
@@ -254,7 +255,7 @@ export function BoardView({
       <section className="panel projection-panel" id={sectionId('projection-panel')}>
         <PanelTitle
           icon={<Gauge size={18} />}
-          title="最終予想グラフ"
+          title={t('最終予想グラフ')}
           note={effectiveProjectionMode === 'historyDemo' ? '過去デモ / 平均値 / 中央値' : '標準 / 平均値 / 中央値'}
         />
         <ProjectionGraph
