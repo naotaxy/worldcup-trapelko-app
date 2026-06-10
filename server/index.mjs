@@ -171,6 +171,36 @@ app.post('/api/sync', async (req, res) => {
   res.json(out)
 })
 
+// Public health/visibility for the auto-sync. Lets us confirm the live result
+// aggregation is alive (last sync time, how many results stored, newest update).
+app.get('/api/sync-status', async (_req, res) => {
+  let resultsCount = null
+  let latestResultUpdatedAt = null
+  if (supabase) {
+    try {
+      const head = await supabase.from('match_results').select('match_id', { count: 'exact', head: true })
+      resultsCount = head.count ?? null
+      const { data } = await supabase
+        .from('match_results')
+        .select('match_id, updated_at')
+        .order('updated_at', { ascending: false })
+        .limit(1)
+      latestResultUpdatedAt = data?.[0]?.updated_at ?? null
+    } catch {
+      // ignore; report what we have
+    }
+  }
+  res.json({
+    ok: true,
+    supabaseReady: Boolean(supabase),
+    pollerIntervalSec: Math.round(syncIntervalMs / 1000),
+    lastAutoSync: lastSyncInfo,
+    resultsCount,
+    latestResultUpdatedAt,
+    serverTime: new Date().toISOString(),
+  })
+})
+
 // Recompute tournament awards (champion/runner-up/3rd/top scorer) from ESPN.
 app.post('/api/sync-awards', async (req, res) => {
   if (!syncAuthorized(req)) {
@@ -1117,13 +1147,16 @@ app.listen(port, () => {
 // ESPN (scores + events) needs no key, so this runs whenever Supabase is set.
 if (supabase) {
   console.log(`[worldcup-trapelko] auto-sync (ESPN + football-data fallback) every ${Math.round(syncIntervalMs / 1000)}s`)
-  setInterval(() => {
+  const runSyncLogged = () =>
     runAutoSync({ notify: true })
       .then((out) => {
         if (out?.espn?.updated || out?.footballData?.updated) console.log('[sync]', JSON.stringify(out))
       })
       .catch((err) => console.error('[sync]', err))
-  }, syncIntervalMs)
+  // Sync immediately on (re)start so a freshly-woken dyno is current at once,
+  // then keep polling. External uptime/cron pings keep the free dyno awake.
+  runSyncLogged()
+  setInterval(runSyncLogged, syncIntervalMs)
 }
 
 async function handleLineEvent(event) {
@@ -1349,7 +1382,7 @@ function parseEspnSummary(summary, data, teamById) {
       if (tally[conceding]) tally[conceding].own += 1
       continue
     }
-    if (/goal/i.test(text) || /penalty - scored/i.test(text)) {
+    if ((/goal/i.test(text) || /penalty - scored/i.test(text)) && !/disallow|no goal|cancell?ed|var/i.test(text)) {
       if (!tally[teamAbbr]) continue
       const scorer = ev?.participants?.[0]?.athlete?.id || `anon-${Math.random()}`
       tally[teamAbbr].goals[scorer] = (tally[teamAbbr].goals[scorer] || 0) + 1
@@ -1463,6 +1496,7 @@ async function syncFromEspn({ notify = true, full = false } = {}) {
 
 // ESPN first (scores + events), football-data as score-only fallback, then
 // trapelko pre-match previews for matches kicking off soon.
+let lastSyncInfo = { at: null, espnScanned: null, espnUpdated: null, espnOk: null, fdUpdated: null }
 async function runAutoSync({ notify = true } = {}) {
   const espn = await syncFromEspn({ notify }).catch((err) => ({ ok: false, error: err?.message }))
   const footballData = footballDataToken
@@ -1470,6 +1504,13 @@ async function runAutoSync({ notify = true } = {}) {
     : { skipped: true }
   const previews = notify ? await previewUpcomingMatches().catch((err) => ({ ok: false, error: err?.message })) : { skipped: true }
   const awards = await computeAutoAwards().catch((err) => ({ ok: false, error: err?.message }))
+  lastSyncInfo = {
+    at: new Date().toISOString(),
+    espnScanned: espn?.scanned ?? null,
+    espnUpdated: espn?.updated ?? null,
+    espnOk: espn?.ok !== false,
+    fdUpdated: footballData?.updated ?? null,
+  }
   return { ok: true, espn, footballData, previews, awards }
 }
 
