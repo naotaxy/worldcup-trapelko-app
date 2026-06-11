@@ -624,7 +624,7 @@ function App() {
           />
         </details>
         <HelpPanel />
-        <PublicRulesPanel rules={publicRules} />
+        <PublicRulesPanel rules={boardUnlocked ? rules : publicRules} />
         {boardUnlocked ? (
           <>
         <details className="panel slot-panel rescue-slot-panel" id="draft-slot">
