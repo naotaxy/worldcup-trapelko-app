@@ -415,12 +415,22 @@ function App() {
   }
 
   const applyInsiderRules = async (nextRules: Rules, mode: RulesUpdateMode) => {
+    // Optimistic, but revert if the cloud save fails so we never end up with a
+    // rule change that only one device sees (insider rules are shared by design).
+    const prevTimeline = rulesTimeline
+    const prevRules = rules
     const nextTimeline = buildRulesTimeline(rulesTimeline, nextRules, mode, new Date().toISOString())
     setRulesTimeline(nextTimeline)
     setRules(nextRules)
     setSaveLabel('保存中')
     const ok = await pushRules(nextRules, awards, mode)
-    setSaveLabel(ok ? 'クラウド保存済み' : 'この端末に保存済み')
+    if (ok) {
+      setSaveLabel('クラウド保存済み（身内全員に共有）')
+    } else {
+      setRulesTimeline(prevTimeline)
+      setRules(prevRules)
+      setSaveLabel('保存失敗：全員に共有できません。合言葉で解錠し直して再度「配点を適用」')
+    }
   }
 
   const updateAward = (key: keyof AwardSettings, teamId: string) => {
