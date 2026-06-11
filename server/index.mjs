@@ -1922,12 +1922,16 @@ async function computeAutoAwards({ force = false } = {}) {
 
   const { data: rs } = await supabase.from('rulesets').select('awards').eq('id', 'default').maybeSingle()
   const cur = rs?.awards || {}
+  // 得点王 (top scorer) is only decided at the very end, so only award it once the
+  // final has been played (champion known). During the group/knockout stages the
+  // current goal leader must NOT receive the top-scorer bonus.
+  const tournamentComplete = Boolean(champion || cur.championTeamId)
   const awards = {
     championTeamId: champion || cur.championTeamId || '',
     runnerUpTeamId: runnerUp || cur.runnerUpTeamId || '',
     thirdPlaceTeamId: thirdPlace || cur.thirdPlaceTeamId || '',
     mvpTeamId: cur.mvpTeamId || '', // MVP stays manual (no free data source)
-    topScorerTeamId: topScorer || cur.topScorerTeamId || '',
+    topScorerTeamId: tournamentComplete ? topScorer || cur.topScorerTeamId || '' : '',
   }
   await supabase.from('rulesets').update({ awards, updated_at: new Date().toISOString() }).eq('id', 'default')
   return { ok: true, awards, topScorer: best ? { name: best.name, goals: best.goals } : null }
