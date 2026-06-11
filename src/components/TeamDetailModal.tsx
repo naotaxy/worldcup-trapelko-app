@@ -73,6 +73,19 @@ export function TeamDetailModal({
     MF: players.filter((player) => player.pos === 'MF'),
     FW: players.filter((player) => player.pos === 'FW'),
   }
+  // Every ESPN-recorded event for THIS team (goals / cards / own goals), shown
+  // directly so each scorer and carded player appears even when their PDF
+  // (katakana) name does not bridge to the English ESPN name. Use the katakana
+  // squad name when we can match it, otherwise the ESPN name.
+  const squadJaByNorm = new Map<string, string>()
+  for (const member of players) {
+    const en = playerInfoByJa[member.name]?.en
+    if (en) squadJaByNorm.set(normName(en), member.name)
+  }
+  const recorded = Object.values(playerStats)
+    .filter((s) => s.abbr === team.shortName && (s.goals || 0) + (s.yellow || 0) + (s.red || 0) + (s.own || 0) > 0)
+    .map((s) => ({ ...s, label: squadJaByNorm.get(normName(s.name || '')) || s.name || '?' }))
+    .sort((a, b) => (b.goals || 0) - (a.goals || 0) || (b.red || 0) - (a.red || 0) || (b.yellow || 0) - (a.yellow || 0))
   const { lang, tz } = useSettings()
   const { hatTricks, yellowCards, redCards, ownGoals } = breakdown.tallies
   const nextMatchOddsText = nextMatch
@@ -170,6 +183,29 @@ export function TeamDetailModal({
             <p className="breakdown-empty">まだ加点なし（試合前）</p>
           )}
         </section>
+
+        {recorded.length > 0 ? (
+          <section className="team-modal-record">
+            <h4>試合の記録（自動取得）</h4>
+            <ul className="team-record-list">
+              {recorded.map((r) => (
+                <li key={r.name || r.label}>
+                  <span>{r.label}</span>
+                  <strong>
+                    {[
+                      r.goals ? `得点${r.goals}` : null,
+                      r.own ? `OG${r.own}` : null,
+                      r.yellow ? `黄${r.yellow}` : null,
+                      r.red ? `赤${r.red}` : null,
+                    ]
+                      .filter(Boolean)
+                      .join('・')}
+                  </strong>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : null}
 
         <section className="team-modal-squad">
           <h4>代表メンバー ({players.length}人)</h4>
