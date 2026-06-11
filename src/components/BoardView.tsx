@@ -1,7 +1,8 @@
 import { useMemo, useState } from 'react'
 import type { CSSProperties, ReactNode } from 'react'
-import { Bell, Gauge, Medal, Network, Trophy } from 'lucide-react'
+import { Bell, CalendarDays, Gauge, Medal, Network, Trophy } from 'lucide-react'
 import { fifaRanking, teamNamesJa, teams, worldCupHistory } from '../data/worldCup2026'
+import { broadcastByFixture } from '../data/broadcasts'
 import { pdfCountryInfo, pdfSquads } from '../data/wcPdf'
 import {
   calculateMemberStandings,
@@ -252,6 +253,8 @@ export function BoardView({
         </div>
       </section>
 
+      <MatchSchedule id={sectionId('schedule')} fixtures={liveFixtures} schedule={schedule} />
+
       <section className="panel projection-panel" id={sectionId('projection-panel')}>
         <PanelTitle
           icon={<Gauge size={18} />}
@@ -270,6 +273,51 @@ export function BoardView({
 
       {selectedTeamModal}
     </>
+  )
+}
+
+// Chronological broadcast schedule (collapsed). Shows every group-stage match in
+// kickoff order with the Japanese terrestrial channel badge where one is set.
+function MatchSchedule({ id, fixtures, schedule }: { id: string; fixtures: Match[]; schedule: Record<string, string> }) {
+  const { lang, tz } = useSettings()
+  const sorted = useMemo(
+    () =>
+      [...fixtures].sort(
+        (a, b) => new Date(schedule[a.id] || a.date).getTime() - new Date(schedule[b.id] || b.date).getTime(),
+      ),
+    [fixtures, schedule],
+  )
+  return (
+    <details className="panel schedule-panel" id={id}>
+      <summary className="rescue-summary">
+        <span>
+          <CalendarDays size={18} />
+          <strong>放送スケジュール</strong>
+        </span>
+        <em>日付時間順・地上波は局名</em>
+      </summary>
+      <ul className="schedule-list">
+        {sorted.map((match) => {
+          const home = teams.find((entry) => entry.id === match.homeTeamId)
+          const away = teams.find((entry) => entry.id === match.awayTeamId)
+          const played = matchWasPlayed(match)
+          const channel = broadcastByFixture[match.id]
+          return (
+            <li key={match.id} className="schedule-row">
+              <span className="schedule-time">{formatKickoff(schedule[match.id] || match.date, tz, lang)}</span>
+              <span className="schedule-teams">
+                {home ? <img src={flagUrl(home.flag)} alt="" /> : null}
+                <span className="schedule-name">{teamNameJa(match.homeTeamId)}</span>
+                <em>{played ? `${match.result.home}-${match.result.away}` : 'vs'}</em>
+                {away ? <img src={flagUrl(away.flag)} alt="" /> : null}
+                <span className="schedule-name">{teamNameJa(match.awayTeamId)}</span>
+              </span>
+              {channel ? <span className="schedule-channel">{channel}</span> : <span className="schedule-channel dazn">DAZN</span>}
+            </li>
+          )
+        })}
+      </ul>
+    </details>
   )
 }
 

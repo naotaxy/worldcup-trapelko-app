@@ -3515,6 +3515,72 @@ button.support-btn {
   cursor: pointer;
 }
 
+/* ---- Broadcast schedule ---- */
+.schedule-list {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  max-height: 440px;
+  overflow-y: auto;
+}
+.schedule-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  border: 1px solid rgba(150, 185, 255, 0.12);
+  background: rgba(150, 185, 255, 0.04);
+  font-size: 0.8rem;
+}
+.schedule-time {
+  color: rgba(200, 215, 255, 0.8);
+  white-space: nowrap;
+  min-width: 92px;
+  font-variant-numeric: tabular-nums;
+}
+.schedule-teams {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: 1;
+  min-width: 0;
+  color: #eaf0ff;
+}
+.schedule-teams img {
+  width: 18px;
+  height: 13px;
+  object-fit: cover;
+  border-radius: 2px;
+  flex: none;
+}
+.schedule-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.schedule-teams em {
+  color: rgba(200, 215, 255, 0.72);
+  font-style: normal;
+  flex: none;
+}
+.schedule-channel {
+  white-space: nowrap;
+  flex: none;
+  padding: 2px 7px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  color: #10224c;
+  background: linear-gradient(160deg, #ffe89a, #ffc23d);
+}
+.schedule-channel.dazn {
+  color: rgba(200, 215, 255, 0.7);
+  background: rgba(150, 185, 255, 0.12);
+}
+
 /* ---- Help (visual step-by-step) ---- */
 .help-panel {
   grid-column: 1 / -1;
