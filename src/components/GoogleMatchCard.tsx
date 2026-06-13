@@ -28,6 +28,9 @@ export function GoogleMatchCard({
   const homeTeam = teams.find((team) => team.id === match.homeTeamId) || teams[0]
   const awayTeam = teams.find((team) => team.id === match.awayTeamId) || teams[0]
   const played = matchWasPlayed(match)
+  // Worldwide (English) Google News search for the fixture: far more coverage,
+  // including overseas sources, than the old Yahoo! JAPAN search.
+  const newsUrl = `https://news.google.com/search?q=${encodeURIComponent(`${homeTeam.name} ${awayTeam.name} World Cup`)}&hl=en-US&gl=US&ceid=US:en`
 
   return (
     <button type="button" className={selected ? 'google-match-card active' : 'google-match-card'} onClick={onSelect}>
@@ -43,7 +46,7 @@ export function GoogleMatchCard({
         <a href={match.highlightUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
           ハイライト
         </a>
-        <a href={match.newsUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
+        <a href={newsUrl} target="_blank" rel="noreferrer" onClick={(event) => event.stopPropagation()}>
           ニュース
         </a>
       </div>
