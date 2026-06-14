@@ -1470,8 +1470,7 @@ async function syncFromEspn({ notify = true, full = false } = {}) {
     if (!error) changed.push(row)
   }
 
-  const notified = notify ? await notifyResults(changed) : 0
-  return { ok: true, scanned: eventIds.size, updated: changed.length, notified }
+  return { ok: true, scanned: eventIds.size, updated: changed.length }
 }
 
 // ESPN first (scores + events), football-data as score-only fallback, then
@@ -1489,6 +1488,9 @@ async function runAutoSync({ notify = true } = {}) {
     const footballData = footballDataToken
       ? await syncResultsFromFootballData({ notify, fallbackOnly: true }).catch((err) => ({ ok: false, error: err?.message }))
       : { skipped: true }
+    // Notify after both sources have upserted, from the DB (self-healing), so the
+    // result-change detection of either path can never double-notify or drop one.
+    const notified = notify ? await notifyPendingResults().catch(() => 0) : 0
     const previews = notify ? await previewUpcomingMatches().catch((err) => ({ ok: false, error: err?.message })) : { skipped: true }
     const awards = await computeAutoAwards().catch((err) => ({ ok: false, error: err?.message }))
     lastSyncInfo = {
@@ -1497,8 +1499,9 @@ async function runAutoSync({ notify = true } = {}) {
       espnUpdated: espn?.updated ?? null,
       espnOk: espn?.ok !== false,
       fdUpdated: footballData?.updated ?? null,
+      notified,
     }
-    return { ok: true, espn, footballData, previews, awards }
+    return { ok: true, espn, footballData, notified, previews, awards }
   } finally {
     autoSyncRunning = false
   }
@@ -1507,20 +1510,6 @@ async function runAutoSync({ notify = true } = {}) {
 // Broadcast result notifications to LINE, de-duplicated by (matchId, scoreline) so
 // a result is announced at most once even if a later sync re-detects it (e.g. the
 // event payload is refined after the score is final). Used by both sync paths.
-async function alreadyNotifiedResult(matchId, score) {
-  try {
-    const { data } = await supabase
-      .from('notifications')
-      .select('id')
-      .eq('event_type', 'result')
-      .eq('payload->>matchId', matchId)
-      .eq('payload->>score', score)
-      .limit(1)
-    return Boolean(data && data.length > 0)
-  } catch {
-    return false
-  }
-}
 async function markResultNotified(target, matchId, score) {
   try {
     await supabase
@@ -1530,31 +1519,39 @@ async function markResultNotified(target, matchId, score) {
     // ignore: a missed mark only risks a single re-notify, never a crash
   }
 }
-async function notifyResults(changed) {
+// Self-healing result broadcaster. Scans recently-updated completed results and
+// announces any (matchId, scoreline) not yet sent to LINE. Guarantees a result is
+// never permanently missed (covers sleep/catch-up, the >N batching summary that
+// used to skip individual matches, transient push failures, etc.), while still
+// re-notifying when the score itself changes (e.g. a later own goal) and never
+// announcing the same scoreline twice. 3h window keeps it cheap and avoids
+// re-announcing old results on deploy.
+async function notifyPendingResults() {
   const target = lineNotificationTarget()
-  if (!target || !changed || changed.length === 0) return 0
-  const fresh = []
-  for (const row of changed) {
+  if (!target) return 0
+  const sinceIso = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
+  const [resultsRes, notifsRes] = await Promise.all([
+    supabase.from('match_results').select('*').gte('updated_at', sinceIso),
+    supabase.from('notifications').select('payload').eq('event_type', 'result'),
+  ])
+  const done = new Set((notifsRes.data || []).map((n) => `${n.payload?.matchId}|${n.payload?.score}`))
+  const fresh = (resultsRes.data || []).filter(
+    (r) => r.home_score != null && r.away_score != null && !done.has(`${r.match_id}|${r.home_score}-${r.away_score}`),
+  )
+  let notified = 0
+  for (const row of fresh) {
     const score = `${row.home_score}-${row.away_score}`
-    if (!(await alreadyNotifiedResult(row.match_id, score))) fresh.push({ row, score })
-  }
-  if (fresh.length === 0) return 0
-  if (fresh.length <= 5) {
-    let notified = 0
-    for (const { row, score } of fresh) {
-      const text = await buildResultBroadcast(row).catch(() => null)
-      if (!text) continue
+    const text = await buildResultBroadcast(row).catch(() => null)
+    if (!text) continue
+    try {
       await pushLine(target, [{ type: 'text', text }])
       await markResultNotified(target, row.match_id, score)
       notified += 1
+    } catch {
+      // leave unmarked so the next sync retries within the 3h window
     }
-    return notified
   }
-  const text = await buildRankingBroadcast(`秘書トラペル子です。WC☆2026 結果まとめ更新（${fresh.length}試合）`).catch(() => null)
-  if (!text) return 0
-  await pushLine(target, [{ type: 'text', text }])
-  for (const { row, score } of fresh) await markResultNotified(target, row.match_id, score)
-  return 1
+  return notified
 }
 
 // Fetch FIFA World Cup results from football-data.org, map each finished group
@@ -1619,9 +1616,7 @@ async function syncResultsFromFootballData({ notify = true, fallbackOnly = false
     if (!error) changed.push(row)
   }
 
-  const notified = notify ? await notifyResults(changed) : 0
-
-  return { ok: true, scanned: matches.length, updated: changed.length, notified }
+  return { ok: true, scanned: matches.length, updated: changed.length }
 }
 
 async function buildRankingBroadcast(headline) {
