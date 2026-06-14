@@ -283,6 +283,30 @@ app.get('/api/health', (_req, res) => {
   }
 })
 
+// LINE push-quota diagnostic. If the monthly free push limit is exhausted, LINE
+// rejects pushes (429) and notifications silently stop. type 'none' = unlimited.
+app.get('/api/line-quota', async (_req, res) => {
+  if (!process.env.LINE_CHANNEL_ACCESS_TOKEN) {
+    res.json({ ok: false, error: 'LINE token not set' })
+    return
+  }
+  try {
+    const headers = { Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}` }
+    const [qRes, cRes] = await Promise.all([
+      fetch('https://api.line.me/v2/bot/message/quota', { headers }),
+      fetch('https://api.line.me/v2/bot/message/quota/consumption', { headers }),
+    ])
+    res.json({
+      ok: true,
+      quotaHttp: qRes.status,
+      quota: await qRes.json().catch(() => ({})),
+      consumption: await cRes.json().catch(() => ({})),
+    })
+  } catch (e) {
+    res.json({ ok: false, error: e?.message })
+  }
+})
+
 app.get('/api/bootstrap', (_req, res) => {
   res.json({
     tournament: 'FIFA World Cup 2026',
@@ -1270,7 +1294,7 @@ async function replyLine(replyToken, messages) {
 
 async function pushLine(to, messages) {
   if (!to || !process.env.LINE_CHANNEL_ACCESS_TOKEN) return
-  await fetch('https://api.line.me/v2/bot/message/push', {
+  const res = await fetch('https://api.line.me/v2/bot/message/push', {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.LINE_CHANNEL_ACCESS_TOKEN}`,
@@ -1278,6 +1302,13 @@ async function pushLine(to, messages) {
     },
     body: JSON.stringify({ to, messages }),
   })
+  if (!res.ok) {
+    // Throw on LINE API rejection (429 quota exceeded, 401 token, etc.) so callers
+    // do NOT mark a result/preview as "sent" when it was never delivered (which
+    // would suppress it forever). Caller dedup leaves it unmarked -> retried later.
+    const body = await res.text().catch(() => '')
+    throw new Error(`LINE push ${res.status}: ${body.slice(0, 300)}`)
+  }
 }
 
 function captureGroup(groupId) {
