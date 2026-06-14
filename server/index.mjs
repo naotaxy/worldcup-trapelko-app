@@ -271,6 +271,16 @@ app.get('/api/health', (_req, res) => {
     supabase: Boolean(supabase),
     liff: Boolean(process.env.LINE_LIFF_ID),
   })
+  // The uptime monitor pings this every few minutes to keep the free dyno awake.
+  // Piggy-back the auto-sync as a backup trigger (fire-and-forget, lock-guarded):
+  // if the internal 5-min interval ever stalls, this still drives result + match
+  // -start notifications on the monitor's cadence. Throttled to avoid double runs.
+  if (supabase) {
+    const last = lastSyncInfo?.at ? Date.parse(lastSyncInfo.at) : 0
+    if (!last || Date.now() - last > 4 * 60 * 1000) {
+      void runAutoSync({ notify: true }).catch(() => {})
+    }
+  }
 })
 
 app.get('/api/bootstrap', (_req, res) => {
@@ -1330,7 +1340,10 @@ const EVENT_KEYS = [
 
 async function espnGet(pathname) {
   try {
-    const res = await fetch(`${ESPN_BASE}${pathname}`, { headers: { 'user-agent': 'wc2026-trapelko/1.0' } })
+    const res = await fetch(`${ESPN_BASE}${pathname}`, {
+      headers: { 'user-agent': 'wc2026-trapelko/1.0' },
+      signal: AbortSignal.timeout(15000),
+    })
     if (!res.ok) return null
     return await res.json()
   } catch {
@@ -1479,10 +1492,14 @@ let lastSyncInfo = { at: null, espnScanned: null, espnUpdated: null, espnOk: nul
 // Single-flight lock: the external cron (/api/sync) and the internal interval run
 // in the same process, so this prevents overlapping runs that would otherwise
 // race the result-change detection and double-notify / drop notifications.
-let autoSyncRunning = false
+let autoSyncStartedAt = 0
 async function runAutoSync({ notify = true } = {}) {
-  if (autoSyncRunning) return { ok: true, skipped: true, reason: 'sync already running' }
-  autoSyncRunning = true
+  // Stale-safe lock: auto-release after 4 min so a hung run (e.g. a network fetch
+  // that never resolves) can never permanently block future syncs/notifications.
+  if (autoSyncStartedAt && Date.now() - autoSyncStartedAt < 4 * 60 * 1000) {
+    return { ok: true, skipped: true, reason: 'sync already running' }
+  }
+  autoSyncStartedAt = Date.now()
   try {
     const espn = await syncFromEspn({ notify }).catch((err) => ({ ok: false, error: err?.message }))
     const footballData = footballDataToken
@@ -1503,7 +1520,7 @@ async function runAutoSync({ notify = true } = {}) {
     }
     return { ok: true, espn, footballData, notified, previews, awards }
   } finally {
-    autoSyncRunning = false
+    autoSyncStartedAt = 0
   }
 }
 
