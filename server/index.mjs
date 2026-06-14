@@ -1539,7 +1539,8 @@ async function runAutoSync({ notify = true } = {}) {
     // Notify after both sources have upserted, from the DB (self-healing), so the
     // result-change detection of either path can never double-notify or drop one.
     const notified = notify ? await notifyPendingResults().catch(() => 0) : 0
-    const previews = notify ? await previewUpcomingMatches().catch((err) => ({ ok: false, error: err?.message })) : { skipped: true }
+    // 試合前プレビューは停止(LINE無料枠の節約)。結果速報のみ・保有国が絡む試合だけ通知。
+    const previews = { skipped: 'disabled' }
     const awards = await computeAutoAwards().catch((err) => ({ ok: false, error: err?.message }))
     lastSyncInfo = {
       at: new Date().toISOString(),
@@ -1578,13 +1579,28 @@ async function notifyPendingResults() {
   const target = lineNotificationTarget()
   if (!target) return 0
   const sinceIso = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
-  const [resultsRes, notifsRes] = await Promise.all([
+  const [resultsRes, notifsRes, selRes, dataMod] = await Promise.all([
     supabase.from('match_results').select('*').gte('updated_at', sinceIso),
     supabase.from('notifications').select('payload').eq('event_type', 'result'),
+    supabase.from('selections').select('team_id'),
+    import('../src/data/worldCup2026.ts'),
   ])
   const done = new Set((notifsRes.data || []).map((n) => `${n.payload?.matchId}|${n.payload?.score}`))
+  // Only notify matches that involve an owned country (saves LINE quota). If no
+  // selections are stored, do not over-suppress: fall back to notifying all.
+  const owned = new Set((selRes.data || []).map((r) => r.team_id))
+  const fixtureById = new Map(dataMod.fixtures.map((f) => [f.id, f]))
+  const involvesOwned = (matchId) => {
+    if (owned.size === 0) return true
+    const fx = fixtureById.get(matchId)
+    return fx ? owned.has(fx.homeTeamId) || owned.has(fx.awayTeamId) : true
+  }
   const fresh = (resultsRes.data || []).filter(
-    (r) => r.home_score != null && r.away_score != null && !done.has(`${r.match_id}|${r.home_score}-${r.away_score}`),
+    (r) =>
+      r.home_score != null &&
+      r.away_score != null &&
+      !done.has(`${r.match_id}|${r.home_score}-${r.away_score}`) &&
+      involvesOwned(r.match_id),
   )
   let notified = 0
   for (const row of fresh) {
