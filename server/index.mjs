@@ -1817,11 +1817,16 @@ async function previewUpcomingMatches({ leadMinutes = 45 } = {}) {
   for (const event of events) {
     const comp = event.competitions?.[0]
     const state = comp?.status?.type?.state || event.status?.type?.state
-    if (state !== 'pre') continue
     const kickoff = Date.parse(event.date)
     if (!Number.isFinite(kickoff)) continue
     const minsToKickoff = (kickoff - now) / 60000
-    if (minsToKickoff <= 0 || minsToKickoff > leadMinutes) continue
+    // Pre-match window (within leadMinutes before kickoff), OR a just-kicked-off
+    // match we missed while the dyno was asleep (state 'in', within graceMinutes
+    // after kickoff) so the start notice still goes out once (deduped below).
+    const graceMinutes = 30
+    const isPreWindow = state === 'pre' && minsToKickoff > 0 && minsToKickoff <= leadMinutes
+    const justStarted = state === 'in' && minsToKickoff <= 0 && minsToKickoff >= -graceMinutes
+    if (!isPreWindow && !justStarted) continue
 
     const competitors = comp?.competitors || []
     const homeId = tlaToId[competitors.find((c) => c.homeAway === 'home')?.team?.abbreviation]
