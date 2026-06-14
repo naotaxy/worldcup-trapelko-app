@@ -1197,6 +1197,10 @@ async function handleLineEvent(event) {
   if (event.type !== 'message' || event.message?.type !== 'text') return
   const inWcGroup = await isWorldCupLineGroup(event)
   if (!inWcGroup) return // only the WC☆2026 group is handled here (W杯特化)
+  // Only respond when トラペル子 is @mentioned. LINE flags the bot's own mention
+  // with isSelf=true; ignore every other message so it does not react unprompted.
+  const mentionedSelf = (event.message.mention?.mentionees || []).some((m) => m.isSelf === true)
+  if (!mentionedSelf) return
   const reply = await buildWorldCupReply(String(event.message.text || ''))
   if (reply) await replyLine(event.replyToken, [{ type: 'text', text: reply }])
 }
