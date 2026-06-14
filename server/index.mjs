@@ -1470,48 +1470,91 @@ async function syncFromEspn({ notify = true, full = false } = {}) {
     if (!error) changed.push(row)
   }
 
-  let notified = 0
-  if (notify && changed.length > 0) {
-    const target = lineNotificationTarget()
-    if (target) {
-      if (changed.length <= 5) {
-        for (const row of changed) {
-          const text = await buildResultBroadcast(row).catch(() => null)
-          if (text) {
-            await pushLine(target, [{ type: 'text', text }])
-            notified += 1
-          }
-        }
-      } else {
-        const text = await buildRankingBroadcast(`秘書トラペル子です。WC☆2026 結果まとめ更新（${changed.length}試合）`).catch(() => null)
-        if (text) {
-          await pushLine(target, [{ type: 'text', text }])
-          notified = 1
-        }
-      }
-    }
-  }
+  const notified = notify ? await notifyResults(changed) : 0
   return { ok: true, scanned: eventIds.size, updated: changed.length, notified }
 }
 
 // ESPN first (scores + events), football-data as score-only fallback, then
 // trapelko pre-match previews for matches kicking off soon.
 let lastSyncInfo = { at: null, espnScanned: null, espnUpdated: null, espnOk: null, fdUpdated: null }
+// Single-flight lock: the external cron (/api/sync) and the internal interval run
+// in the same process, so this prevents overlapping runs that would otherwise
+// race the result-change detection and double-notify / drop notifications.
+let autoSyncRunning = false
 async function runAutoSync({ notify = true } = {}) {
-  const espn = await syncFromEspn({ notify }).catch((err) => ({ ok: false, error: err?.message }))
-  const footballData = footballDataToken
-    ? await syncResultsFromFootballData({ notify, fallbackOnly: true }).catch((err) => ({ ok: false, error: err?.message }))
-    : { skipped: true }
-  const previews = notify ? await previewUpcomingMatches().catch((err) => ({ ok: false, error: err?.message })) : { skipped: true }
-  const awards = await computeAutoAwards().catch((err) => ({ ok: false, error: err?.message }))
-  lastSyncInfo = {
-    at: new Date().toISOString(),
-    espnScanned: espn?.scanned ?? null,
-    espnUpdated: espn?.updated ?? null,
-    espnOk: espn?.ok !== false,
-    fdUpdated: footballData?.updated ?? null,
+  if (autoSyncRunning) return { ok: true, skipped: true, reason: 'sync already running' }
+  autoSyncRunning = true
+  try {
+    const espn = await syncFromEspn({ notify }).catch((err) => ({ ok: false, error: err?.message }))
+    const footballData = footballDataToken
+      ? await syncResultsFromFootballData({ notify, fallbackOnly: true }).catch((err) => ({ ok: false, error: err?.message }))
+      : { skipped: true }
+    const previews = notify ? await previewUpcomingMatches().catch((err) => ({ ok: false, error: err?.message })) : { skipped: true }
+    const awards = await computeAutoAwards().catch((err) => ({ ok: false, error: err?.message }))
+    lastSyncInfo = {
+      at: new Date().toISOString(),
+      espnScanned: espn?.scanned ?? null,
+      espnUpdated: espn?.updated ?? null,
+      espnOk: espn?.ok !== false,
+      fdUpdated: footballData?.updated ?? null,
+    }
+    return { ok: true, espn, footballData, previews, awards }
+  } finally {
+    autoSyncRunning = false
   }
-  return { ok: true, espn, footballData, previews, awards }
+}
+
+// Broadcast result notifications to LINE, de-duplicated by (matchId, scoreline) so
+// a result is announced at most once even if a later sync re-detects it (e.g. the
+// event payload is refined after the score is final). Used by both sync paths.
+async function alreadyNotifiedResult(matchId, score) {
+  try {
+    const { data } = await supabase
+      .from('notifications')
+      .select('id')
+      .eq('event_type', 'result')
+      .eq('payload->>matchId', matchId)
+      .eq('payload->>score', score)
+      .limit(1)
+    return Boolean(data && data.length > 0)
+  } catch {
+    return false
+  }
+}
+async function markResultNotified(target, matchId, score) {
+  try {
+    await supabase
+      .from('notifications')
+      .insert({ line_group_id: target, event_type: 'result', payload: { matchId, score }, sent_at: new Date().toISOString() })
+  } catch {
+    // ignore: a missed mark only risks a single re-notify, never a crash
+  }
+}
+async function notifyResults(changed) {
+  const target = lineNotificationTarget()
+  if (!target || !changed || changed.length === 0) return 0
+  const fresh = []
+  for (const row of changed) {
+    const score = `${row.home_score}-${row.away_score}`
+    if (!(await alreadyNotifiedResult(row.match_id, score))) fresh.push({ row, score })
+  }
+  if (fresh.length === 0) return 0
+  if (fresh.length <= 5) {
+    let notified = 0
+    for (const { row, score } of fresh) {
+      const text = await buildResultBroadcast(row).catch(() => null)
+      if (!text) continue
+      await pushLine(target, [{ type: 'text', text }])
+      await markResultNotified(target, row.match_id, score)
+      notified += 1
+    }
+    return notified
+  }
+  const text = await buildRankingBroadcast(`秘書トラペル子です。WC☆2026 結果まとめ更新（${fresh.length}試合）`).catch(() => null)
+  if (!text) return 0
+  await pushLine(target, [{ type: 'text', text }])
+  for (const { row, score } of fresh) await markResultNotified(target, row.match_id, score)
+  return 1
 }
 
 // Fetch FIFA World Cup results from football-data.org, map each finished group
@@ -1576,27 +1619,7 @@ async function syncResultsFromFootballData({ notify = true, fallbackOnly = false
     if (!error) changed.push(row)
   }
 
-  let notified = 0
-  if (notify && changed.length > 0) {
-    const target = lineNotificationTarget()
-    if (target) {
-      if (changed.length <= 5) {
-        for (const row of changed) {
-          const text = await buildResultBroadcast(row).catch(() => null)
-          if (text) {
-            await pushLine(target, [{ type: 'text', text }])
-            notified += 1
-          }
-        }
-      } else {
-        const text = await buildRankingBroadcast(`秘書トラペル子です。WC☆2026 結果まとめ更新（${changed.length}試合）`).catch(() => null)
-        if (text) {
-          await pushLine(target, [{ type: 'text', text }])
-          notified = 1
-        }
-      }
-    }
-  }
+  const notified = notify ? await notifyResults(changed) : 0
 
   return { ok: true, scanned: matches.length, updated: changed.length, notified }
 }
