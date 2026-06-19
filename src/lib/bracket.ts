@@ -2,8 +2,11 @@
 // already publishes the full 2026 bracket with placeholder slots (e.g. "Group A
 // 2nd Place", "Round of 32 1 Winner") and fills in real teams + scores as the
 // tournament progresses. Works on both the Render and static (Pages) builds.
-import { flagUrl } from '../logic/score'
-import { fixtures, teamNamesJa, teams } from '../data/worldCup2026'
+// Explicit .ts extensions so this module is importable both by Vite (frontend)
+// and by the Node runtime type-stripping the server uses (extensionless value
+// imports do not resolve to .ts at runtime).
+import { flagUrl } from '../logic/score.ts'
+import { fixtures, teamNamesJa, teams } from '../data/worldCup2026.ts'
 
 const ESPN = 'https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world'
 const ROUND_ORDER = ['round-of-32', 'round-of-16', 'quarterfinals', 'semifinals', '3rd-place-match', 'final']

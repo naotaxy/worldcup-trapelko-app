@@ -146,6 +146,31 @@ app.get('/api/broadcast-preview', async (req, res) => {
   res.json({ ok: Boolean(text), text })
 })
 
+// Push the current participant ranking to the WC☆2026 group on demand. Admin
+// only (board passphrase). Use to broadcast a freshly recomputed ranking, e.g.
+// after a retroactive scoring-rule change. e.g. POST /api/announce-ranking?adminKey=...
+app.post('/api/announce-ranking', async (req, res) => {
+  if (!adminAuthorized(req)) {
+    res.status(403).json({ ok: false, error: 'forbidden' })
+    return
+  }
+  const target = lineNotificationTarget()
+  if (!target) {
+    res.status(400).json({ ok: false, error: 'no WC group configured' })
+    return
+  }
+  const text = await rankingReply().catch((err) => {
+    console.error('[announce-ranking]', err)
+    return null
+  })
+  if (!text) {
+    res.status(500).json({ ok: false, error: 'failed to build ranking' })
+    return
+  }
+  await pushLine(target, [{ type: 'text', text }])
+  res.json({ ok: true, pushedTo: target, text })
+})
+
 function syncAuthorized(req) {
   const key = process.env.SYNC_KEY
   return !key || req.query.key === key
@@ -1696,16 +1721,42 @@ async function buildRankingBroadcast(headline) {
 
 // Recompute live standings from Supabase using the same scoring logic as the
 // frontend (imported at runtime via Node type-stripping; Node 24 pinned).
+// Group + knockout data from ESPN (bracket qualifiers, odds, real kickoff
+// schedule), cached for 5 minutes so repeated standings recomputes during a
+// single sync cycle do not re-fetch ESPN dozens of times.
+let tournamentCache = { at: 0, data: null }
+async function getTournamentCached() {
+  const now = Date.now()
+  if (tournamentCache.data && now - tournamentCache.at < 5 * 60 * 1000) return tournamentCache.data
+  try {
+    const bracketMod = await import('../src/lib/bracket.ts')
+    const fresh = await bracketMod.fetchTournament(true)
+    if (fresh && (fresh.bracket || Object.keys(fresh.schedule || {}).length > 0)) {
+      tournamentCache = { at: now, data: fresh }
+    }
+  } catch (err) {
+    console.error('[server] getTournamentCached', err?.message)
+  }
+  return tournamentCache.data || { bracket: null, schedule: {}, odds: {} }
+}
+
 async function computeStandingsFromDb() {
   if (!supabase) return null
-  const [logic, data] = await Promise.all([import('../src/logic/score.ts'), import('../src/data/worldCup2026.ts')])
+  const [logic, data, bracketMod] = await Promise.all([
+    import('../src/logic/score.ts'),
+    import('../src/data/worldCup2026.ts'),
+    import('../src/lib/bracket.ts'),
+  ])
   const [rulesetRes, selectionsRes, resultsRes, membersRes] = await Promise.all([
-    supabase.from('rulesets').select('rules, awards').eq('id', 'default').maybeSingle(),
+    supabase.from('rulesets').select('*').eq('id', 'default').maybeSingle(),
     supabase.from('selections').select('team_id, members(member_key)'),
     supabase.from('match_results').select('*'),
     supabase.from('members').select('member_key, real_name'),
   ])
   const rules = rulesetRes.data?.rules || data.defaultRules
+  // Mirror the frontend exactly: score each match with the rule timeline
+  // (per-kickoff), not just the latest single rules object.
+  const rulesTimeline = sanitizeInsiderTimeline(rulesetRes.data?.rules_timeline, rules)
   const awards =
     rulesetRes.data?.awards && Object.keys(rulesetRes.data.awards).length
       ? rulesetRes.data.awards
@@ -1736,7 +1787,20 @@ async function computeStandingsFromDb() {
   const fixtures = data.fixtures.map((match) =>
     resultsMap[match.id] ? { ...match, result: { ...match.result, ...resultsMap[match.id] } } : match,
   )
-  const teamStandings = logic.calculateTeamStandings(data.groups, fixtures, rules, awards)
+  // The ESPN Round-of-32 set is the authoritative knockout-qualifier list, plus
+  // the real kickoff schedule and odds, exactly like the live board. Without
+  // these the LINE ranking diverges from the app once the knockout begins.
+  const tournament = await getTournamentCached()
+  const qualifierIds = bracketMod.knockoutTeamIds(tournament.bracket)
+  const teamStandings = logic.calculateTeamStandings(
+    data.groups,
+    fixtures,
+    rulesTimeline,
+    awards,
+    qualifierIds,
+    tournament.odds,
+    tournament.schedule,
+  )
   const memberStandings = logic.calculateMemberStandings(members, selections, teamStandings)
   return { data, teamStandings, memberStandings, selections, members }
 }
