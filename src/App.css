@@ -660,9 +660,28 @@ input {
 }
 
 .bracket-team-name {
+  display: flex;
+  min-width: 0;
+  align-items: center;
   overflow: hidden;
   white-space: nowrap;
+}
+
+.bracket-country-name {
+  min-width: 0;
+  overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.bracket-owner {
+  display: inline-block;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 54px;
+  margin-left: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .bracket-team strong {

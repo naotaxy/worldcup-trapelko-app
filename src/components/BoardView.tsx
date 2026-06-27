@@ -143,7 +143,9 @@ export function BoardView({
 
   return (
     <>
-      {groupStageComplete ? <KnockoutBracket id={sectionId('bracket')} rounds={bracket} loaded={bracketLoaded} /> : null}
+      {groupStageComplete ? (
+        <KnockoutBracket id={sectionId('bracket')} rounds={bracket} loaded={bracketLoaded} owners={teamOwnersByTeam} />
+      ) : null}
       <details className="panel group-panel" id={sectionId('group-standings')} open={groupStageComplete ? undefined : true}>
         <summary className="rescue-summary">
           <span>
@@ -272,7 +274,9 @@ export function BoardView({
         />
       </section>
 
-      {!groupStageComplete ? <KnockoutBracket id={sectionId('bracket')} rounds={bracket} loaded={bracketLoaded} /> : null}
+      {!groupStageComplete ? (
+        <KnockoutBracket id={sectionId('bracket')} rounds={bracket} loaded={bracketLoaded} owners={teamOwnersByTeam} />
+      ) : null}
 
       {selectedTeamModal}
     </>
@@ -381,7 +385,17 @@ function formatOdds(value: number): string {
   return `${value.toFixed(2)}倍`
 }
 
-function KnockoutBracket({ id, rounds, loaded }: { id: string; rounds: BracketRound[] | null; loaded: boolean }) {
+function KnockoutBracket({
+  id,
+  rounds,
+  loaded,
+  owners,
+}: {
+  id: string
+  rounds: BracketRound[] | null
+  loaded: boolean
+  owners: Map<string, string>
+}) {
   return (
     <section className="panel bracket-panel" id={id}>
       <PanelTitle icon={<Network size={18} />} title="決勝トーナメント 組合せ" note="" />
@@ -395,7 +409,7 @@ function KnockoutBracket({ id, rounds, loaded }: { id: string; rounds: BracketRo
             <div key={round.slug} className="bracket-round">
               <h4>{round.label}</h4>
               {round.matches.map((match) => (
-                <BracketCard key={match.id} match={match} />
+                <BracketCard key={match.id} match={match} owners={owners} />
               ))}
             </div>
           ))}
@@ -405,23 +419,27 @@ function KnockoutBracket({ id, rounds, loaded }: { id: string; rounds: BracketRo
   )
 }
 
-function BracketCard({ match }: { match: BracketMatch }) {
+function BracketCard({ match, owners }: { match: BracketMatch; owners: Map<string, string> }) {
   const { lang, tz } = useSettings()
   const when = formatKickoff(match.date, tz, lang)
   return (
     <div className={match.status === 'post' ? 'bracket-card done' : 'bracket-card'}>
       {when ? <div className="bracket-date">{when}</div> : null}
-      <BracketTeamRow team={match.home} />
-      <BracketTeamRow team={match.away} />
+      <BracketTeamRow team={match.home} owners={owners} />
+      <BracketTeamRow team={match.away} owners={owners} />
     </div>
   )
 }
 
-function BracketTeamRow({ team }: { team: BracketTeam }) {
+function BracketTeamRow({ team, owners }: { team: BracketTeam; owners: Map<string, string> }) {
+  const owner = team.teamId ? owners.get(team.teamId) : null
   return (
     <div className={team.winner ? 'bracket-team winner' : 'bracket-team'}>
       {team.flag ? <img src={team.flag} alt="" /> : <span className="bracket-tbd" />}
-      <span className="bracket-team-name">{team.name}</span>
+      <span className="bracket-team-name">
+        <span className="bracket-country-name">{team.name}</span>
+        {owner ? <em className="match-owner bracket-owner">{owner}</em> : null}
+      </span>
       <strong>{team.score ?? ''}</strong>
     </div>
   )
