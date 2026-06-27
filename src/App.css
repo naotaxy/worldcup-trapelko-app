@@ -1550,6 +1550,33 @@ input {
   background: rgba(216, 199, 131, 0.14);
 }
 
+.team-pill-out {
+  color: rgba(221, 232, 255, 0.7);
+  border-color: rgba(150, 185, 255, 0.08);
+  background: rgba(150, 185, 255, 0.025);
+  opacity: 0.54;
+  filter: saturate(0.45) brightness(0.88);
+}
+
+.team-pill-out .pill-group {
+  color: rgba(12, 18, 10, 0.66);
+  background: rgba(201, 192, 138, 0.62);
+}
+
+.team-pill-out > strong {
+  color: rgba(240, 217, 138, 0.64);
+  border-left-color: rgba(150, 185, 255, 0.12);
+}
+
+.team-pill-button.team-pill-out:hover,
+.team-pill-button.team-pill-out:focus-visible {
+  color: rgba(234, 240, 255, 0.86);
+  border-color: rgba(216, 199, 131, 0.44);
+  background: rgba(216, 199, 131, 0.08);
+  opacity: 0.74;
+  filter: saturate(0.68) brightness(0.96);
+}
+
 .team-modal-overlay {
   position: fixed;
   inset: 0;
@@ -3525,7 +3552,13 @@ button.support-btn {
   max-height: 440px;
   overflow-y: auto;
 }
+.schedule-item {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
 .schedule-row {
+  width: 100%;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -3533,7 +3566,18 @@ button.support-btn {
   border-radius: 8px;
   border: 1px solid rgba(150, 185, 255, 0.12);
   background: rgba(150, 185, 255, 0.04);
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
   font-size: 0.8rem;
+  text-align: left;
+}
+.schedule-row:hover,
+.schedule-row:focus-visible,
+.schedule-row.expanded {
+  border-color: rgba(216, 199, 131, 0.42);
+  background: rgba(216, 199, 131, 0.08);
+  outline: none;
 }
 .schedule-time {
   color: rgba(200, 215, 255, 0.8);
@@ -3542,12 +3586,19 @@ button.support-btn {
   font-variant-numeric: tabular-nums;
 }
 .schedule-teams {
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   gap: 5px;
   flex: 1;
   min-width: 0;
   color: #eaf0ff;
+}
+.schedule-team-side {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
 }
 .schedule-teams img {
   width: 18px;
@@ -3557,14 +3608,29 @@ button.support-btn {
   flex: none;
 }
 .schedule-name {
+  min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.schedule-owner {
+  display: inline-block;
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: min(108px, 26vw);
+  margin-left: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .schedule-teams em {
   color: rgba(200, 215, 255, 0.72);
   font-style: normal;
   flex: none;
+}
+.schedule-teams .schedule-owner {
+  flex: 0 1 auto;
+  color: #0c120a;
 }
 .schedule-channel {
   white-space: nowrap;
@@ -3579,6 +3645,55 @@ button.support-btn {
 .schedule-channel.dazn {
   color: rgba(200, 215, 255, 0.7);
   background: rgba(150, 185, 255, 0.12);
+}
+.schedule-odds-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0 8px 2px 100px;
+  padding: 6px 8px;
+  border-left: 2px solid rgba(216, 199, 131, 0.5);
+  border-radius: 6px;
+  background: rgba(9, 24, 58, 0.42);
+  color: rgba(205, 219, 255, 0.86);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+.schedule-odds-line strong {
+  color: #f0d98a;
+}
+.schedule-odds-empty {
+  color: rgba(200, 215, 255, 0.58);
+}
+
+@media (max-width: 560px) {
+  .schedule-row {
+    gap: 6px;
+    padding: 7px;
+  }
+
+  .schedule-time {
+    min-width: 78px;
+    font-size: 0.72rem;
+  }
+
+  .schedule-teams {
+    gap: 3px;
+  }
+
+  .schedule-owner {
+    max-width: 52px;
+  }
+
+  .schedule-channel {
+    padding: 2px 5px;
+    font-size: 0.68rem;
+  }
+
+  .schedule-odds-line {
+    margin-left: 0;
+  }
 }
 
 /* ---- Help (visual step-by-step) ---- */

@@ -231,20 +231,23 @@ export function BoardView({
                   {row.member.name}
                 </div>
                 <div className="team-pills">
-                  {row.teams.slice(0, maxTeamsPerMember).map((team) => (
-                    <button
-                      key={team.team.id}
-                      type="button"
-                      className="team-pill team-pill-button"
-                      onClick={() => setSelectedTeamId(team.team.id)}
-                      title={`${teamNameJa(team.team.id)}の内訳を見る`}
-                    >
-                      <img src={flagUrl(team.team.flag)} alt="" />
-                      {teamNameJa(team.team.id)}
-                      <em className="pill-group">{team.team.group}</em>
-                      <strong>{team.fantasyPoints}</strong>
-                    </button>
-                  ))}
+                  {row.teams.slice(0, maxTeamsPerMember).map((team) => {
+                    const teamOut = groupStageComplete && !qualifierIds.has(team.team.id)
+                    return (
+                      <button
+                        key={team.team.id}
+                        type="button"
+                        className={teamOut ? 'team-pill team-pill-button team-pill-out' : 'team-pill team-pill-button'}
+                        onClick={() => setSelectedTeamId(team.team.id)}
+                        title={`${teamNameJa(team.team.id)}の内訳を見る`}
+                      >
+                        <img src={flagUrl(team.team.flag)} alt="" />
+                        {teamNameJa(team.team.id)}
+                        <em className="pill-group">{team.team.group}</em>
+                        <strong>{team.fantasyPoints}</strong>
+                      </button>
+                    )
+                  })}
                 </div>
               </div>
               <strong>{row.total}</strong>
@@ -253,7 +256,7 @@ export function BoardView({
         </div>
       </section>
 
-      <MatchSchedule id={sectionId('schedule')} fixtures={liveFixtures} schedule={schedule} />
+      <MatchSchedule id={sectionId('schedule')} fixtures={liveFixtures} schedule={schedule} owners={teamOwnersByTeam} odds={odds} />
 
       <section className="panel projection-panel" id={sectionId('projection-panel')}>
         <PanelTitle
@@ -278,8 +281,22 @@ export function BoardView({
 
 // Chronological broadcast schedule (collapsed). Shows every group-stage match in
 // kickoff order with the Japanese terrestrial channel badge where one is set.
-function MatchSchedule({ id, fixtures, schedule }: { id: string; fixtures: Match[]; schedule: Record<string, string> }) {
+function MatchSchedule({
+  id,
+  fixtures,
+  schedule,
+  owners,
+  odds,
+}: {
+  id: string
+  fixtures: Match[]
+  schedule: Record<string, string>
+  owners: Map<string, string>
+  odds: Record<string, Record<string, number>>
+}) {
+  const [expandedId, setExpandedId] = useState<string | null>(null)
   const { lang, tz } = useSettings()
+  const t = useT()
   const sorted = useMemo(
     () =>
       [...fixtures].sort(
@@ -292,9 +309,9 @@ function MatchSchedule({ id, fixtures, schedule }: { id: string; fixtures: Match
       <summary className="rescue-summary">
         <span>
           <CalendarDays size={18} />
-          <strong>放送スケジュール</strong>
+          <strong>{t('放送スケジュール')}</strong>
         </span>
-        <em>日付時間順・地上波は局名</em>
+        <em>{t('日付時間順・地上波は局名')}</em>
       </summary>
       <ul className="schedule-list">
         {sorted.map((match) => {
@@ -302,23 +319,66 @@ function MatchSchedule({ id, fixtures, schedule }: { id: string; fixtures: Match
           const away = teams.find((entry) => entry.id === match.awayTeamId)
           const played = matchWasPlayed(match)
           const channel = broadcastByFixture[match.id]
+          const expanded = expandedId === match.id
+          const oddsId = `${id}-${match.id}-odds`
+          const matchOdds = odds[match.id]
+          const homeOdds = matchOdds?.[match.homeTeamId]
+          const awayOdds = matchOdds?.[match.awayTeamId]
+          const drawOdds = matchOdds?.draw
+          const hasOdds = homeOdds != null || awayOdds != null || drawOdds != null
+          const homeOwner = owners.get(match.homeTeamId)
+          const awayOwner = owners.get(match.awayTeamId)
           return (
-            <li key={match.id} className="schedule-row">
-              <span className="schedule-time">{formatKickoff(schedule[match.id] || match.date, tz, lang)}</span>
-              <span className="schedule-teams">
-                {home ? <img src={flagUrl(home.flag)} alt="" /> : null}
-                <span className="schedule-name">{teamNameJa(match.homeTeamId)}</span>
-                <em>{played ? `${match.result.home}-${match.result.away}` : 'vs'}</em>
-                {away ? <img src={flagUrl(away.flag)} alt="" /> : null}
-                <span className="schedule-name">{teamNameJa(match.awayTeamId)}</span>
-              </span>
-              {channel ? <span className="schedule-channel">{channel}</span> : <span className="schedule-channel dazn">DAZN</span>}
+            <li key={match.id} className="schedule-item">
+              <button
+                type="button"
+                className={expanded ? 'schedule-row expanded' : 'schedule-row'}
+                aria-expanded={expanded}
+                aria-controls={oddsId}
+                onClick={() => setExpandedId((current) => (current === match.id ? null : match.id))}
+              >
+                <span className="schedule-time">{formatKickoff(schedule[match.id] || match.date, tz, lang)}</span>
+                <span className="schedule-teams">
+                  <span className="schedule-team-side">
+                    {home ? <img src={flagUrl(home.flag)} alt="" /> : null}
+                    <span className="schedule-name">{teamNameJa(match.homeTeamId)}</span>
+                    {homeOwner ? <em className="match-owner schedule-owner">{homeOwner}</em> : null}
+                  </span>
+                  <em>{played ? `${match.result.home}-${match.result.away}` : 'vs'}</em>
+                  <span className="schedule-team-side">
+                    {away ? <img src={flagUrl(away.flag)} alt="" /> : null}
+                    <span className="schedule-name">{teamNameJa(match.awayTeamId)}</span>
+                    {awayOwner ? <em className="match-owner schedule-owner">{awayOwner}</em> : null}
+                  </span>
+                </span>
+                {channel ? <span className="schedule-channel">{channel}</span> : <span className="schedule-channel dazn">DAZN</span>}
+              </button>
+              {expanded ? (
+                <div id={oddsId} className="schedule-odds-line">
+                  <strong>{t('オッズ予想')}</strong>
+                  {hasOdds ? (
+                    <span>
+                      {homeOdds != null ? `${teamNameJa(match.homeTeamId)}${t('勝ち')} ${formatOdds(homeOdds)}` : null}
+                      {homeOdds != null && (drawOdds != null || awayOdds != null) ? ' / ' : null}
+                      {drawOdds != null ? `${t('引分')} ${formatOdds(drawOdds)}` : null}
+                      {drawOdds != null && awayOdds != null ? ' / ' : null}
+                      {awayOdds != null ? `${teamNameJa(match.awayTeamId)}${t('勝ち')} ${formatOdds(awayOdds)}` : null}
+                    </span>
+                  ) : (
+                    <span className="schedule-odds-empty">{t('オッズなし')}</span>
+                  )}
+                </div>
+              ) : null}
             </li>
           )
         })}
       </ul>
     </details>
   )
+}
+
+function formatOdds(value: number): string {
+  return `${value.toFixed(2)}倍`
 }
 
 function KnockoutBracket({ id, rounds, loaded }: { id: string; rounds: BracketRound[] | null; loaded: boolean }) {
