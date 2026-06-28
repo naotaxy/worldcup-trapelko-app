@@ -48,6 +48,7 @@ import {
   pushResult,
   pushRules,
   recordVisit,
+  saveRescuePick,
   unlockBoard,
   type AnalyticsSummary,
   type PlayerStat,
@@ -543,7 +544,7 @@ function App() {
     }, 1550)
   }
 
-  const confirmSlotPick = () => {
+  const confirmSlotPick = async () => {
     if (!slotResultTeam || slotPhase !== 'ready') return
     if (!rescueSlotReady) {
       setSlotMessage(t('決勝トーナメント進出国の確定後に使えます'))
@@ -571,6 +572,11 @@ function App() {
     setSlotPhase('idle')
     setSlotResultId(null)
     setSlotPendingResultId(null)
+    const saved = await saveRescuePick(draftMember.id, slotResultTeam.id)
+    if (!saved) {
+      setSlotMessage(t('保存に失敗しました。合言葉を確認してください'))
+      return
+    }
     setSlotMessage(`${draftMember.name}が${teamNameJa(slotResultTeam.id)}を獲得しました`)
   }
 
