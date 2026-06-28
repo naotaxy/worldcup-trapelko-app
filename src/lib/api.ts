@@ -125,6 +125,12 @@ export async function pushRules(rules: Rules, awards: AwardSettings, mode: Rules
   return Boolean(out?.ok)
 }
 
+export async function saveRescuePick(memberKey: string, teamId: string): Promise<boolean> {
+  if (!memberKey || !teamId) return false
+  const out = await postJson<{ ok: boolean }>('/api/rescue', { memberKey, teamId }, { 'x-admin-key': adminKey() })
+  return Boolean(out?.ok)
+}
+
 export async function unlockBoard(
   passphrase: string,
 ): Promise<{ ok: boolean; members?: { id: string; name: string; avatar: string }[] } | null> {

@@ -85,6 +85,11 @@ const lineMemberSchema = z.object({
   realName: z.string().optional(),
 })
 
+const rescuePickSchema = z.object({
+  memberKey: z.string().trim().min(1),
+  teamId: z.string().trim().min(1),
+})
+
 const memoryState = {
   rules: null,
   awards: null,
@@ -184,6 +189,28 @@ function adminAuthorized(req) {
   if (!expected) return false
   const key = req.get('x-admin-key') || (req.body && req.body.adminKey) || req.query.adminKey || ''
   return key === expected
+}
+
+function joinedMemberKey(members) {
+  if (Array.isArray(members)) return members[0]?.member_key || ''
+  return members?.member_key || ''
+}
+
+function selectionRowsToMemberSelections(rows) {
+  return (rows || [])
+    .map((row) => ({ memberId: joinedMemberKey(row.members), teamId: row.team_id }))
+    .filter((selection) => selection.memberId && selection.teamId)
+}
+
+async function fetchRescueSelections() {
+  if (!supabase) return []
+  try {
+    const { data, error } = await supabase.from('rescue_picks').select('team_id, members(member_key)')
+    if (error) return []
+    return selectionRowsToMemberSelections(data)
+  } catch {
+    return []
+  }
 }
 
 // Combined live sync: ESPN (scores + events) + football-data fallback.
@@ -1091,6 +1118,55 @@ app.post('/api/rules', async (req, res) => {
   res.json({ ok: true, rules, rulesTimeline, awards })
 })
 
+app.post('/api/rescue', async (req, res) => {
+  if (!adminAuthorized(req)) {
+    res.status(401).json({ ok: false, error: 'unauthorized' })
+    return
+  }
+  const parsed = rescuePickSchema.safeParse(req.body || {})
+  if (!parsed.success) {
+    res.status(400).json({ ok: false, error: 'memberKey and teamId required' })
+    return
+  }
+  if (!supabase) {
+    res.status(500).json({ ok: false, error: 'supabase unavailable' })
+    return
+  }
+
+  const { memberKey, teamId } = parsed.data
+  try {
+    const { data: member, error: memberError } = await supabase
+      .from('members')
+      .select('id')
+      .eq('member_key', memberKey)
+      .maybeSingle()
+    if (memberError) {
+      res.status(500).json({ ok: false, error: 'member lookup failed' })
+      return
+    }
+    if (!member?.id) {
+      res.status(400).json({ ok: false, error: 'member not found' })
+      return
+    }
+
+    const { error } = await supabase.from('rescue_picks').upsert(
+      {
+        member_id: member.id,
+        team_id: teamId,
+      },
+      { onConflict: 'member_id' },
+    )
+    if (error) {
+      res.status(500).json({ ok: false, error: 'rescue save failed' })
+      return
+    }
+    res.json({ ok: true })
+  } catch (error) {
+    console.error('[server] /api/rescue', error)
+    res.status(500).json({ ok: false, error: 'rescue save failed' })
+  }
+})
+
 // Shared mutable board state. Returns source:"supabase" only when a backend is
 // actually wired up, so the frontend knows whether to trust it over local/seed.
 app.get('/api/state', async (_req, res) => {
@@ -1100,15 +1176,14 @@ app.get('/api/state', async (_req, res) => {
   }
 
   try {
-    const [rulesetRes, selectionsRes, resultsRes] = await Promise.all([
+    const [rulesetRes, selectionsRes, rescueSelections, resultsRes] = await Promise.all([
       supabase.from('rulesets').select('*').eq('id', 'default').maybeSingle(),
       supabase.from('selections').select('team_id, owner_slot, members(member_key)'),
+      fetchRescueSelections(),
       supabase.from('match_results').select('*'),
     ])
 
-    const selections = (selectionsRes.data || [])
-      .filter((row) => row.members?.member_key)
-      .map((row) => ({ memberId: row.members.member_key, teamId: row.team_id }))
+    const selections = [...selectionRowsToMemberSelections(selectionsRes.data), ...rescueSelections]
 
     const results = {}
     for (const row of resultsRes.data || []) {
@@ -1779,9 +1854,10 @@ async function computeStandingsFromDb() {
     import('../src/data/worldCup2026.ts'),
     import('../src/lib/bracket.ts'),
   ])
-  const [rulesetRes, selectionsRes, resultsRes, membersRes] = await Promise.all([
+  const [rulesetRes, selectionsRes, rescueSelections, resultsRes, membersRes] = await Promise.all([
     supabase.from('rulesets').select('*').eq('id', 'default').maybeSingle(),
     supabase.from('selections').select('team_id, members(member_key)'),
+    fetchRescueSelections(),
     supabase.from('match_results').select('*'),
     supabase.from('members').select('member_key, real_name'),
   ])
@@ -1800,9 +1876,7 @@ async function computeStandingsFromDb() {
     avatar: '',
     accent: '',
   }))
-  const selections = (selectionsRes.data || [])
-    .filter((entry) => entry.members?.member_key)
-    .map((entry) => ({ memberId: entry.members.member_key, teamId: entry.team_id }))
+  const selections = [...selectionRowsToMemberSelections(selectionsRes.data), ...rescueSelections]
   const resultsMap = {}
   for (const entry of resultsRes.data || []) {
     const eventPayload = entry.event_payload || {}
