@@ -44,6 +44,17 @@ type EspnCompetitor = {
   team?: { abbreviation?: string; displayName?: string }
 }
 
+type EspnMoneylineLeg = {
+  close?: { odds?: string | number | null }
+  open?: { odds?: string | number | null }
+}
+
+type EspnMoneyline = {
+  home?: EspnMoneylineLeg
+  away?: EspnMoneylineLeg
+  draw?: EspnMoneylineLeg
+}
+
 function toTeam(competitor: EspnCompetitor | undefined): BracketTeam {
   const abbr = competitor?.team?.abbreviation || ''
   const real = teamByAbbr.get(abbr)
@@ -73,6 +84,23 @@ function toDecimalOdds(raw: string | number | undefined | null): number | null {
   const dec = a > 0 ? a / 100 + 1 : 100 / Math.abs(a) + 1
   return Math.round(dec * 100) / 100
 }
+
+function oddsEntryFromMoneyline(
+  moneyline: EspnMoneyline | undefined | null,
+  homeTeamId: string,
+  awayTeamId: string,
+): Record<string, number> | null {
+  if (!moneyline) return null
+  const homeDec = toDecimalOdds(moneyline.home?.close?.odds ?? moneyline.home?.open?.odds)
+  const awayDec = toDecimalOdds(moneyline.away?.close?.odds ?? moneyline.away?.open?.odds)
+  const drawDec = toDecimalOdds(moneyline.draw?.close?.odds ?? moneyline.draw?.open?.odds)
+  const entry: Record<string, number> = {}
+  if (homeDec != null) entry[homeTeamId] = homeDec
+  if (awayDec != null) entry[awayTeamId] = awayDec
+  if (drawDec != null) entry.draw = drawDec
+  return Object.keys(entry).length > 0 ? entry : null
+}
+
 const fixturePairKey = (a: string, b: string) => [a, b].sort().join('|')
 const fixtureByPair = new Map(fixtures.map((f) => [fixturePairKey(f.homeTeamId, f.awayTeamId), f.id]))
 
@@ -112,24 +140,20 @@ export async function fetchTournament(force = false): Promise<Tournament> {
               const fid = fixtureByPair.get(fixturePairKey(ah.id, aa.id))
               if (fid && ev.date) schedule[fid] = ev.date
               const ml = comp?.odds?.[0]?.moneyline
-              if (fid && ml) {
-                const homeDec = toDecimalOdds(ml.home?.close?.odds ?? ml.home?.open?.odds)
-                const awayDec = toDecimalOdds(ml.away?.close?.odds ?? ml.away?.open?.odds)
-                const drawDec = toDecimalOdds(ml.draw?.close?.odds ?? ml.draw?.open?.odds)
-                const entry: Record<string, number> = {}
-                if (homeDec != null) entry[ah.id] = homeDec
-                if (awayDec != null) entry[aa.id] = awayDec
-                if (drawDec != null) entry.draw = drawDec
-                if (Object.keys(entry).length > 0) odds[fid] = entry
-              }
+              const groupOdds = oddsEntryFromMoneyline(ml, ah.id, aa.id)
+              if (fid && groupOdds) odds[fid] = groupOdds
             }
 
             // Knockout round? Add to the bracket.
             const slug = ev?.season?.slug
             if (ROUND_ORDER.includes(slug)) {
+              const matchId = String(ev.id)
+              const ml = comp?.odds?.[0]?.moneyline
+              const knockoutOdds = ah && aa ? oddsEntryFromMoneyline(ml, ah.id, aa.id) : null
+              if (knockoutOdds) odds[matchId] = knockoutOdds
               const list = byRound.get(slug) || []
               list.push({
-                id: String(ev.id),
+                id: matchId,
                 date: ev.date,
                 status: comp?.status?.type?.state || 'pre',
                 home: toTeam(home),

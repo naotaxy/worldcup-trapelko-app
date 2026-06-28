@@ -144,7 +144,7 @@ export function BoardView({
   return (
     <>
       {groupStageComplete ? (
-        <KnockoutBracket id={sectionId('bracket')} rounds={bracket} loaded={bracketLoaded} owners={teamOwnersByTeam} />
+        <KnockoutBracket id={sectionId('bracket')} rounds={bracket} loaded={bracketLoaded} owners={teamOwnersByTeam} odds={odds} />
       ) : null}
       <details className="panel group-panel" id={sectionId('group-standings')} open={groupStageComplete ? undefined : true}>
         <summary className="rescue-summary">
@@ -275,7 +275,7 @@ export function BoardView({
       </section>
 
       {!groupStageComplete ? (
-        <KnockoutBracket id={sectionId('bracket')} rounds={bracket} loaded={bracketLoaded} owners={teamOwnersByTeam} />
+        <KnockoutBracket id={sectionId('bracket')} rounds={bracket} loaded={bracketLoaded} owners={teamOwnersByTeam} odds={odds} />
       ) : null}
 
       {selectedTeamModal}
@@ -390,11 +390,13 @@ function KnockoutBracket({
   rounds,
   loaded,
   owners,
+  odds,
 }: {
   id: string
   rounds: BracketRound[] | null
   loaded: boolean
   owners: Map<string, string>
+  odds: Record<string, Record<string, number>>
 }) {
   return (
     <section className="panel bracket-panel" id={id}>
@@ -409,7 +411,7 @@ function KnockoutBracket({
             <div key={round.slug} className="bracket-round">
               <h4>{round.label}</h4>
               {round.matches.map((match) => (
-                <BracketCard key={match.id} match={match} owners={owners} />
+                <BracketCard key={match.id} match={match} owners={owners} odds={odds} />
               ))}
             </div>
           ))}
@@ -419,14 +421,66 @@ function KnockoutBracket({
   )
 }
 
-function BracketCard({ match, owners }: { match: BracketMatch; owners: Map<string, string> }) {
+function BracketCard({
+  match,
+  owners,
+  odds,
+}: {
+  match: BracketMatch
+  owners: Map<string, string>
+  odds: Record<string, Record<string, number>>
+}) {
+  const [open, setOpen] = useState(false)
   const { lang, tz } = useSettings()
+  const t = useT()
   const when = formatKickoff(match.date, tz, lang)
-  return (
-    <div className={match.status === 'post' ? 'bracket-card done' : 'bracket-card'}>
-      {when ? <div className="bracket-date">{when}</div> : null}
+  const cardClassName = match.status === 'post' ? 'bracket-card done' : 'bracket-card'
+  const body = (
+    <>
+      {when ? <span className="bracket-date">{when}</span> : null}
       <BracketTeamRow team={match.home} owners={owners} />
       <BracketTeamRow team={match.away} owners={owners} />
+    </>
+  )
+  const homeTeamId = match.home.teamId
+  const awayTeamId = match.away.teamId
+  if (!homeTeamId || !awayTeamId) {
+    return <div className={cardClassName}>{body}</div>
+  }
+
+  const oddsId = `bracket-odds-${match.id}`
+  const matchOdds = odds[match.id]
+  const homeOdds = matchOdds?.[homeTeamId]
+  const awayOdds = matchOdds?.[awayTeamId]
+  const drawOdds = matchOdds?.draw
+  const hasOdds = homeOdds != null || awayOdds != null || drawOdds != null
+  return (
+    <div className={cardClassName}>
+      <button
+        type="button"
+        className="bracket-card-button"
+        aria-expanded={open}
+        aria-controls={oddsId}
+        onClick={() => setOpen((current) => !current)}
+      >
+        {body}
+      </button>
+      {open ? (
+        <div id={oddsId} className="bracket-odds-line">
+          <strong>{t('オッズ予想')}</strong>
+          {hasOdds ? (
+            <span>
+              {homeOdds != null ? `${teamNameJa(homeTeamId)}${t('勝ち')} ${formatOdds(homeOdds)}` : null}
+              {homeOdds != null && (drawOdds != null || awayOdds != null) ? ' / ' : null}
+              {drawOdds != null ? `${t('引分')} ${formatOdds(drawOdds)}` : null}
+              {drawOdds != null && awayOdds != null ? ' / ' : null}
+              {awayOdds != null ? `${teamNameJa(awayTeamId)}${t('勝ち')} ${formatOdds(awayOdds)}` : null}
+            </span>
+          ) : (
+            <span className="schedule-odds-empty">{t('オッズなし')}</span>
+          )}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -434,14 +488,14 @@ function BracketCard({ match, owners }: { match: BracketMatch; owners: Map<strin
 function BracketTeamRow({ team, owners }: { team: BracketTeam; owners: Map<string, string> }) {
   const owner = team.teamId ? owners.get(team.teamId) : null
   return (
-    <div className={team.winner ? 'bracket-team winner' : 'bracket-team'}>
+    <span className={team.winner ? 'bracket-team winner' : 'bracket-team'}>
       {team.flag ? <img src={team.flag} alt="" /> : <span className="bracket-tbd" />}
       <span className="bracket-team-name">
         <span className="bracket-country-name">{team.name}</span>
         {owner ? <em className="match-owner bracket-owner">{owner}</em> : null}
       </span>
       <strong>{team.score ?? ''}</strong>
-    </div>
+    </span>
   )
 }
 
