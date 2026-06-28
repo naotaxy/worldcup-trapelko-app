@@ -58,6 +58,7 @@ import { buildRulesTimeline, currentRulesOf, neutralPublicRules, normalizeTimeli
 
 const maxTeamsPerMember = 8
 const maxOwnersPerTeam = 2
+const rescuePickLimit = maxTeamsPerMember + 1
 
 const defaultAwards: AwardSettings = {
   championTeamId: '',
@@ -193,7 +194,6 @@ function App() {
   const [selectedMatchId, setSelectedMatchId] = useState('F-1')
   const [saveLabel, setSaveLabel] = useState('保存待ち')
   const [draftSelections, setDraftSelections] = useState<TeamSelection[]>(() => initialLocalState()?.selections ?? demoSelections)
-  const [draftMemberId, setDraftMemberId] = useState(demoMembers[0].id)
   const [manualMemberId, setManualMemberId] = useState(demoMembers[0].id)
   const [manualTeamId, setManualTeamId] = useState(teams[0].id)
   const [manualMessage, setManualMessage] = useState('選挙で決まった組み合わせを手動で登録できます')
@@ -205,7 +205,8 @@ function App() {
   const [slotPendingResultId, setSlotPendingResultId] = useState<string | null>(null)
   const [slotSpinKey, setSlotSpinKey] = useState(0)
   const [slotPhase, setSlotPhase] = useState<'idle' | 'spinning' | 'ready'>('idle')
-  const [slotMessage, setSlotMessage] = useState('参加者を選んでスロットを回してください')
+  const [slotMessage, setSlotMessage] = useState('決勝T進出国から救済スロットを回してください')
+  const [rescueOwnerCapEnabled, setRescueOwnerCapEnabled] = useState(false)
   const [resultSaveLabel, setResultSaveLabel] = useState('結果を保存')
   const [playerStats, setPlayerStats] = useState<Record<string, PlayerStat>>({})
   const [schedule, setSchedule] = useState<Record<string, string>>({})
@@ -356,19 +357,73 @@ function App() {
     draftSelections.forEach((selection) => counts.set(selection.memberId, (counts.get(selection.memberId) || 0) + 1))
     return counts
   }, [draftSelections])
-  const remainingTeams = useMemo(
-    () => teams.filter((team) => (teamPickCounts.get(team.id) || 0) < maxOwnersPerTeam),
-    [teamPickCounts],
+  const memberPointTotals = useMemo(() => {
+    const pointsByTeam = new Map(teamStandings.map((row) => [row.team.id, row.fantasyPoints]))
+    const totals = new Map<string, number>()
+    demoMembers.forEach((member) => totals.set(member.id, 0))
+    draftSelections.forEach((selection) => {
+      totals.set(selection.memberId, (totals.get(selection.memberId) || 0) + (pointsByTeam.get(selection.teamId) || 0))
+    })
+    return totals
+  }, [demoMembers, draftSelections, teamStandings])
+  const rescueSurvivorCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    demoMembers.forEach((member) => counts.set(member.id, 0))
+    draftSelections.forEach((selection) => {
+      if (qualifierIds.has(selection.teamId)) {
+        counts.set(selection.memberId, (counts.get(selection.memberId) || 0) + 1)
+      }
+    })
+    return counts
+  }, [demoMembers, draftSelections, qualifierIds])
+  const rescueUsedMember = useMemo(() => {
+    const usedMembers = demoMembers.filter((member) => (memberPickCounts.get(member.id) || 0) >= rescuePickLimit)
+    return (
+      usedMembers.sort((a, b) => {
+        const pickDiff = (memberPickCounts.get(b.id) || 0) - (memberPickCounts.get(a.id) || 0)
+        if (pickDiff !== 0) return pickDiff
+        return a.name.localeCompare(b.name, 'ja')
+      })[0] || null
+    )
+  }, [demoMembers, memberPickCounts])
+  const rescueMember = useMemo(() => {
+    if (rescueUsedMember) return rescueUsedMember
+    return (
+      [...demoMembers].sort((a, b) => {
+        const survivorDiff = (rescueSurvivorCounts.get(a.id) || 0) - (rescueSurvivorCounts.get(b.id) || 0)
+        if (survivorDiff !== 0) return survivorDiff
+        const pointDiff = (memberPointTotals.get(a.id) || 0) - (memberPointTotals.get(b.id) || 0)
+        if (pointDiff !== 0) return pointDiff
+        return a.name.localeCompare(b.name, 'ja')
+      })[0] || null
+    )
+  }, [demoMembers, memberPointTotals, rescueSurvivorCounts, rescueUsedMember])
+  const rescueMemberId = rescueMember?.id || ''
+  const rescueSlotReady = groupStageComplete && qualifierIds.size > 0
+  const rescueUsed = rescueUsedMember !== null
+  const rescueMemberOwnedTeamIds = useMemo(
+    () => new Set(draftSelections.filter((selection) => selection.memberId === rescueMemberId).map((selection) => selection.teamId)),
+    [draftSelections, rescueMemberId],
   )
-  const draftMember = demoMembers.find((member) => member.id === draftMemberId) || demoMembers[0]
+  const rescueTeams = useMemo(() => {
+    if (!rescueSlotReady || !rescueMemberId || rescueUsed) return []
+    return teams.filter(
+      (team) =>
+        qualifierIds.has(team.id) &&
+        !rescueMemberOwnedTeamIds.has(team.id) &&
+        (!rescueOwnerCapEnabled || (teamPickCounts.get(team.id) || 0) < maxOwnersPerTeam),
+    )
+  }, [qualifierIds, rescueMemberId, rescueMemberOwnedTeamIds, rescueOwnerCapEnabled, rescueSlotReady, rescueUsed, teamPickCounts])
+  const draftMember = rescueMember || demoMembers[0]
   const manualMember = demoMembers.find((member) => member.id === manualMemberId) || demoMembers[0]
   const manualTeam = teams.find((team) => team.id === manualTeamId) || teams[0]
   const conflictTeam = teams.find((team) => team.id === conflictTeamId) || teams[0]
-  const draftMemberPickCount = memberPickCounts.get(draftMemberId) || 0
+  const draftMemberPickCount = memberPickCounts.get(draftMember.id) || 0
+  const rescueSurvivorCount = rescueSurvivorCounts.get(draftMember.id) || 0
   const manualMemberPickCount = memberPickCounts.get(manualMemberId) || 0
   const conflictOpenSlots = Math.max(0, maxOwnersPerTeam - (teamPickCounts.get(conflictTeamId) || 0))
   const slotResultTeam = slotResultId ? teams.find((team) => team.id === slotResultId) || null : null
-  const slotCountries = useMemo(() => remainingTeams.map(slotCountryFromTeam), [remainingTeams])
+  const slotCountries = useMemo(() => rescueTeams.map(slotCountryFromTeam), [rescueTeams])
   const slotResultCountry = slotResultTeam ? slotCountryFromTeam(slotResultTeam) : null
 
   const applyPreview = () => {
@@ -460,21 +515,25 @@ function App() {
   const spinSlot = () => {
     clearSlotTimer(slotTimerRef)
     if (slotPhase === 'spinning') return
-    if (draftMemberPickCount >= maxTeamsPerMember) {
-      setSlotMessage(`${draftMember.name}は${maxTeamsPerMember}チーム取得済みです`)
+    if (!rescueSlotReady) {
+      setSlotMessage(t('決勝トーナメント進出国の確定後に使えます'))
       return
     }
-    if (remainingTeams.length === 0) {
-      setSlotMessage('2人決定済みの国だけになりました')
+    if (rescueUsed || draftMemberPickCount >= rescuePickLimit) {
+      setSlotMessage(t('救済は使用済みです'))
+      return
+    }
+    if (rescueTeams.length === 0) {
+      setSlotMessage(t('追加できる決勝トーナメント進出国がありません'))
       return
     }
 
-    const result = remainingTeams[Math.floor(Math.random() * remainingTeams.length)]
+    const result = rescueTeams[Math.floor(Math.random() * rescueTeams.length)]
     setSlotResultId(null)
     setSlotPendingResultId(result.id)
     setSlotSpinKey((current) => current + 1)
     setSlotPhase('spinning')
-    setSlotMessage('スロット回転中')
+    setSlotMessage(t('スロット回転中'))
     slotTimerRef.current = window.setTimeout(() => {
       slotTimerRef.current = null
       setSlotPhase('ready')
@@ -486,7 +545,22 @@ function App() {
 
   const confirmSlotPick = () => {
     if (!slotResultTeam || slotPhase !== 'ready') return
-    const validation = validateSelection(draftSelections, draftMember.id, slotResultTeam.id, demoMembers)
+    if (!rescueSlotReady) {
+      setSlotMessage(t('決勝トーナメント進出国の確定後に使えます'))
+      return
+    }
+    if (rescueUsed) {
+      setSlotMessage(t('救済は使用済みです'))
+      return
+    }
+    const validation = validateRescueSelection(
+      draftSelections,
+      draftMember.id,
+      slotResultTeam.id,
+      demoMembers,
+      qualifierIds,
+      rescueOwnerCapEnabled,
+    )
     if (validation) {
       setSlotMessage(validation)
       return
@@ -498,7 +572,6 @@ function App() {
     setSlotResultId(null)
     setSlotPendingResultId(null)
     setSlotMessage(`${draftMember.name}が${teamNameJa(slotResultTeam.id)}を獲得しました`)
-    setDraftMemberId(nextAvailableMemberId(nextSelections, draftMember.id))
   }
 
   const addManualDecision = () => {
@@ -643,12 +716,18 @@ function App() {
           <summary className="rescue-summary">
             <span>
               <Shuffle size={18} />
-              <strong>救済スロット</strong>
+              <strong>{t('救済スロット')}</strong>
             </span>
-            <em>予選終了後だけ使用 / 対象{remainingTeams.length}チーム</em>
+            <em>
+              {t('出場国が最少の1名のみ')} / {t('対象')}{' '}
+              {rescueTeams.length}
+              {t('カ国')}
+            </em>
           </summary>
           <p className="rescue-slot-note">
-            予選敗退国を多く持った参加者の救済用です。予選通過国のうち、まだ2人決定していない国だけを回します。
+            {t(
+              '救済スロットは、決勝トーナメント進出32カ国の中から1国を、出場国が最も少ない参加者に追加します。選ばれた国はその人の9カ国目としてポイントに加算されます。',
+            )}
           </p>
           <div className="slot-draft-layout">
             <CountrySlot
@@ -658,31 +737,42 @@ function App() {
               spinning={slotPhase === 'spinning'}
             />
             <div className="slot-controls">
-              <label className="slot-member-select">
-                <span>参加者</span>
-                <select value={draftMemberId} onChange={(event) => setDraftMemberId(event.target.value)}>
-                  {demoMembers.map((member) => {
-                    const count = memberPickCounts.get(member.id) || 0
-                    return (
-                      <option key={member.id} value={member.id}>
-                        {member.name} ({count}/{maxTeamsPerMember})
-                      </option>
-                    )
-                  })}
-                </select>
+              <div className="slot-member-target" aria-live="polite">
+                <span>{t('対象')}</span>
+                <strong>{draftMember.name}</strong>
+                <em>
+                  {t('決勝T進出')}: {rescueSurvivorCount}
+                  {t('カ国')} / {t('所有')}: {draftMemberPickCount}/{rescuePickLimit}
+                </em>
+              </div>
+
+              <label className="slot-toggle">
+                <input
+                  type="checkbox"
+                  checked={rescueOwnerCapEnabled}
+                  onChange={(event) => setRescueOwnerCapEnabled(event.target.checked)}
+                  disabled={slotPhase === 'spinning'}
+                />
+                <span>{t('決勝T国の取得上限(1国最大2人)を適用')}</span>
               </label>
+
+              {!rescueSlotReady ? (
+                <p className="slot-muted">{t('決勝トーナメント進出国の確定後に使えます')}</p>
+              ) : rescueUsed ? (
+                <p className="slot-muted">{t('救済は使用済みです')}</p>
+              ) : null}
 
               <div className="slot-status">
                 <span>{draftMember.name}</span>
-                <strong>{draftMemberPickCount}/{maxTeamsPerMember}</strong>
-                <p>{slotMessage}</p>
+                <strong>{draftMemberPickCount}/{rescuePickLimit}</strong>
+                <p>{t(slotMessage)}</p>
               </div>
 
               {slotPhase === 'ready' && slotResultTeam ? (
                 <div className="slot-result">
                   <img src={flagUrl(slotResultTeam.flag)} alt={`${teamNameJa(slotResultTeam.id)}の国旗`} />
                   <div>
-                    <span>今回の出目</span>
+                    <span>{t('今回の出目')}</span>
                     <strong>{teamNameJa(slotResultTeam.id)}</strong>
                   </div>
                 </div>
@@ -693,14 +783,25 @@ function App() {
                   type="button"
                   className="text-button"
                   onClick={spinSlot}
-                  disabled={slotPhase === 'spinning' || draftMemberPickCount >= maxTeamsPerMember || remainingTeams.length === 0}
+                  disabled={
+                    slotPhase === 'spinning' ||
+                    !rescueSlotReady ||
+                    rescueUsed ||
+                    draftMemberPickCount >= rescuePickLimit ||
+                    rescueTeams.length === 0
+                  }
                 >
                   <Shuffle size={16} />
-                  回す
+                  {t('回す')}
                 </button>
-                <button type="button" className="text-button" onClick={confirmSlotPick} disabled={slotPhase !== 'ready'}>
+                <button
+                  type="button"
+                  className="text-button"
+                  onClick={confirmSlotPick}
+                  disabled={slotPhase !== 'ready' || !rescueSlotReady || rescueUsed || draftMemberPickCount >= rescuePickLimit}
+                >
                   <BadgeCheck size={16} />
-                  この国を取る
+                  {t('この国を取る')}
                 </button>
               </div>
 
@@ -721,7 +822,6 @@ function App() {
                   onClick={() => {
                     setDraftSelections([])
                     resetSlotState('ドラフトをリセットしました')
-                    setDraftMemberId(demoMembers[0].id)
                     setManualMessage('選挙で決まった組み合わせを手動で登録できます')
                     setConflictResultMemberIds([])
                     setConflictMessage('3人以上が同じ国を希望した時だけ回してください')
@@ -732,9 +832,12 @@ function App() {
               </div>
 
               <div className="remaining-countries">
-                <span>ルーレット対象 {remainingTeams.length}チーム</span>
+                <span>
+                  {t('ルーレット対象')} {rescueTeams.length}
+                  {t('カ国')}
+                </span>
                 <div>
-                  {remainingTeams.slice(0, 14).map((team) => (
+                  {rescueTeams.slice(0, 14).map((team) => (
                     <img key={team.id} src={flagUrl(team.flag)} alt={teamNameJa(team.id)} />
                   ))}
                 </div>
@@ -1307,21 +1410,6 @@ function slotCountryFromTeam(team: Team): SlotCountry {
   }
 }
 
-function nextAvailableMemberId(selections: TeamSelection[], currentId: string): string {
-  const currentIndex = Math.max(
-    0,
-    seedMembers.findIndex((member) => member.id === currentId),
-  )
-
-  for (let offset = 1; offset <= seedMembers.length; offset += 1) {
-    const member = seedMembers[(currentIndex + offset) % seedMembers.length]
-    const pickCount = memberPickCountOf(selections, member.id)
-    if (pickCount < maxTeamsPerMember) return member.id
-  }
-
-  return currentId
-}
-
 function validateSelection(
   selections: TeamSelection[],
   memberId: string,
@@ -1338,6 +1426,30 @@ function validateSelection(
     return `${member.name}は${maxTeamsPerMember}チーム決定済みです`
   }
   if (teamPickCountOf(selections, teamId) >= maxOwnersPerTeam) {
+    return `${teamNameJa(teamId)}は${maxOwnersPerTeam}人決定済みです`
+  }
+  return null
+}
+
+function validateRescueSelection(
+  selections: TeamSelection[],
+  memberId: string,
+  teamId: string,
+  members: Member[],
+  qualifierIds: Set<string>,
+  enforceOwnerCap: boolean,
+): string | null {
+  const member = members.find((entry) => entry.id === memberId)
+  const team = teams.find((entry) => entry.id === teamId)
+  if (!member || !team) return '参加者または国が見つかりません'
+  if (!qualifierIds.has(teamId)) return `${teamNameJa(teamId)}は決勝トーナメント進出国ではありません`
+  if (selections.some((selection) => selection.memberId === memberId && selection.teamId === teamId)) {
+    return `${member.name}は${teamNameJa(teamId)}をすでに決定済みです`
+  }
+  if (memberPickCountOf(selections, memberId) >= rescuePickLimit) {
+    return '救済は使用済みです'
+  }
+  if (enforceOwnerCap && teamPickCountOf(selections, teamId) >= maxOwnersPerTeam) {
     return `${teamNameJa(teamId)}は${maxOwnersPerTeam}人決定済みです`
   }
   return null

@@ -22,6 +22,7 @@ import { TeamDetailModal } from './TeamDetailModal'
 import { formatKickoff, useSettings, useT } from '../lib/i18n'
 
 const maxTeamsPerMember = 8
+const rescueTeamsPerMember = maxTeamsPerMember + 1
 
 export type BoardViewProps = {
   members: Member[]
@@ -251,8 +252,9 @@ export function BoardView({
                   {row.member.name}
                 </div>
                 <div className="team-pills">
-                  {row.teams.slice(0, maxTeamsPerMember).map((team) => {
+                  {row.teams.slice(0, isPublic ? maxTeamsPerMember : rescueTeamsPerMember).map((team, index) => {
                     const teamOut = groupStageComplete && !qualifierIds.has(team.team.id)
+                    const isRescueTeam = !isPublic && index >= maxTeamsPerMember
                     return (
                       <button
                         key={team.team.id}
@@ -262,8 +264,9 @@ export function BoardView({
                         title={`${teamNameJa(team.team.id)}の内訳を見る`}
                       >
                         <img src={flagUrl(team.team.flag)} alt="" />
-                        {teamNameJa(team.team.id)}
+                        <span className="team-pill-name">{teamNameJa(team.team.id)}</span>
                         <em className="pill-group">{team.team.group}</em>
+                        {isRescueTeam ? <em className="pill-rescue">{t('救済')}</em> : null}
                         <strong>{team.fantasyPoints}</strong>
                       </button>
                     )
