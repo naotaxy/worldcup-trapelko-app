@@ -892,6 +892,68 @@ input {
   color: #f4f8ff;
 }
 
+.slot-member-target {
+  display: grid;
+  gap: 4px;
+  padding: 11px 12px;
+  border: 1px solid rgba(150, 185, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(150, 185, 255, 0.055);
+}
+
+.slot-member-target span,
+.slot-member-target em,
+.slot-toggle {
+  color: #9fb2da;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.slot-member-target strong {
+  overflow-wrap: anywhere;
+  color: #f4f8ff;
+  font-size: 20px;
+  line-height: 1.2;
+}
+
+.slot-member-target em {
+  font-style: normal;
+  line-height: 1.35;
+}
+
+.slot-toggle {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 9px;
+  padding: 10px 11px;
+  border: 1px solid rgba(150, 185, 255, 0.11);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.14);
+}
+
+.slot-toggle input {
+  width: 17px;
+  height: 17px;
+  accent-color: #f4ce59;
+}
+
+.slot-toggle span {
+  line-height: 1.35;
+}
+
+.slot-muted {
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid rgba(244, 206, 89, 0.16);
+  border-radius: 8px;
+  background: rgba(244, 206, 89, 0.075);
+  color: #d6cfa4;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
 .slot-status,
 .slot-result {
   border: 1px solid rgba(150, 185, 255, 0.12);
@@ -1550,6 +1612,7 @@ input {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  max-width: 100%;
   padding: 2px 7px 2px 3px;
   border: 1px solid rgba(150, 185, 255, 0.16);
   border-radius: 999px;
@@ -1558,6 +1621,12 @@ input {
   line-height: 1.4;
   white-space: nowrap;
   background: rgba(150, 185, 255, 0.06);
+}
+
+.team-pill-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .team-pills img,
@@ -1585,6 +1654,25 @@ input {
   border-radius: 4px;
   padding: 0 4px;
   line-height: 15px;
+}
+
+.pill-rescue {
+  flex: none;
+  padding: 0 4px;
+  border: 1px solid rgba(244, 206, 89, 0.35);
+  border-radius: 4px;
+  color: #f4ce59;
+  background: rgba(244, 206, 89, 0.12);
+  font-size: 10px;
+  font-style: normal;
+  font-weight: 800;
+  line-height: 15px;
+}
+
+.team-pill-out .pill-rescue {
+  color: rgba(244, 206, 89, 0.68);
+  border-color: rgba(244, 206, 89, 0.18);
+  background: rgba(244, 206, 89, 0.065);
 }
 
 .team-modal-schedule {
