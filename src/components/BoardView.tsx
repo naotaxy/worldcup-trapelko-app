@@ -23,6 +23,8 @@ import { formatKickoff, useSettings, useT } from '../lib/i18n'
 
 const maxTeamsPerMember = 8
 const rescueTeamsPerMember = maxTeamsPerMember + 1
+// 終了した決勝T試合を「試合・結果」に残す時間(キックオフ基準で約1日)。
+const KNOCKOUT_KEEP_MS = 24 * 60 * 60 * 1000
 
 export type BoardViewProps = {
   members: Member[]
@@ -87,10 +89,25 @@ export function BoardView({
     () =>
       (bracket ?? [])
         .flatMap((round) => round.matches.map((match) => ({ match, roundLabel: round.label })))
-        .filter(({ match }) => match.status !== 'post')
+        // 未終了の試合＋終了した試合はキックオフから約1日は残す。現在時刻参照は意図的(陳腐化は許容)。
+        // eslint-disable-next-line react-hooks/purity
+        .filter(({ match }) => match.status !== 'post' || knockoutMatchTime(match.date) > Date.now() - KNOCKOUT_KEEP_MS)
         .sort((a, b) => knockoutMatchTime(a.match.date) - knockoutMatchTime(b.match.date)),
     [bracket],
   )
+  // 決勝Tで負けて敗退した国(終了した試合の敗者)。ランキングで薄く表示する。
+  const knockoutEliminatedIds = useMemo(() => {
+    const ids = new Set<string>()
+    for (const round of bracket ?? []) {
+      for (const match of round.matches) {
+        if (match.status !== 'post') continue
+        for (const team of [match.home, match.away]) {
+          if (team.teamId && !team.winner) ids.add(team.teamId)
+        }
+      }
+    }
+    return ids
+  }, [bracket])
   const selectedPublicMatch = useMemo(
     () => activeMatches.find((match) => match.id === selectedPublicMatchId) || activeMatches[0] || liveFixtures[0],
     [activeMatches, liveFixtures, selectedPublicMatchId],
@@ -256,7 +273,9 @@ export function BoardView({
                 </div>
                 <div className="team-pills">
                   {row.teams.slice(0, isPublic ? maxTeamsPerMember : rescueTeamsPerMember).map((team, index) => {
-                    const teamOut = groupStageComplete && !qualifierIds.has(team.team.id)
+                    const teamOut =
+                      groupStageComplete &&
+                      (!qualifierIds.has(team.team.id) || knockoutEliminatedIds.has(team.team.id))
                     const isRescueTeam = !isPublic && index >= maxTeamsPerMember
                     return (
                       <button

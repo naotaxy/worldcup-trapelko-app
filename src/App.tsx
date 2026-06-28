@@ -332,7 +332,9 @@ function App() {
     () =>
       (bracket ?? [])
         .flatMap((round) => round.matches.map((match) => ({ match, roundLabel: round.label })))
-        .filter(({ match }) => match.status !== 'post')
+        // 未終了の試合＋終了した試合はキックオフから約1日(86,400,000ms)残す。現在時刻参照は意図的(陳腐化は許容)。
+        // eslint-disable-next-line react-hooks/purity
+        .filter(({ match }) => match.status !== 'post' || knockoutMatchTime(match.date) > Date.now() - 24 * 60 * 60 * 1000)
         .sort((a, b) => knockoutMatchTime(a.match.date) - knockoutMatchTime(b.match.date)),
     [bracket],
   )
