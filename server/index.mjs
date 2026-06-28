@@ -1257,7 +1257,7 @@ async function buildWorldCupReply(text) {
   if (/(予想|平均|中央値|シミュ)/.test(t)) {
     return `秘書トラペル子です。WC☆2026の最終予想グラフ(平均/中央値/レンジ)はこちら。\n${publicAppUrl()}#projection-panel`
   }
-  if (/(ルール|配点|点数|得点ルール)/.test(t)) return rulesReply()
+  if (/(ルール|配点|点数|得点ルール)/.test(t)) return await rulesReply()
   if (/(選手|代表|メンバー|スタメン|写真|身長|年齢)/.test(t)) {
     return `秘書トラペル子です。代表選手の写真・年齢・身長は、アプリの順位で国名をタップすると見られます。\n${publicAppUrl()}`
   }
@@ -1288,14 +1288,46 @@ async function rankingReply() {
   return ['秘書トラペル子です。WC☆2026 現在の参加者ランキング', ranking, publicAppUrl()].join('\n')
 }
 
-function rulesReply() {
+// アプリ(身内ボード)の現在配点と完全一致させるため、ハードコードせず
+// Supabase の最新ルール(= rules_timeline 末尾 / rules 列、アプリの currentRulesOf と同値)から文面を生成する。
+async function loadCurrentInsiderRules() {
+  let rules = null
+  if (supabase) {
+    try {
+      const { data } = await supabase.from('rulesets').select('rules, rules_timeline').eq('id', 'default').maybeSingle()
+      const tl = data?.rules_timeline
+      if (Array.isArray(tl) && tl.length > 0 && tl[tl.length - 1]?.rules) rules = tl[tl.length - 1].rules
+      else if (data?.rules) rules = data.rules
+    } catch {
+      // Supabase 取得失敗時は既定値にフォールバック
+    }
+  }
+  if (!rules) {
+    try {
+      const data = await import('../src/data/worldCup2026.ts')
+      rules = data.defaultRules
+    } catch {
+      // ignore
+    }
+  }
+  return rules
+}
+
+function formatRulesMessage(r) {
+  const s = (n) => (n > 0 ? `+${n}` : `${n}`)
   return [
     '秘書トラペル子です。WC☆2026の配点:',
-    '勝5 / PK勝3 / 分1 / 3点差+3 / ハットトリック+5',
-    '決勝T進出+5 / 3位+5 / 準優勝+10 / 優勝+15 / 全敗+10',
-    'MVP+10 / 得点王+10 / 黄4枚-2 / 赤-2 / OG-2 / 日本2倍',
+    `勝${r.win} / PK勝${r.penaltyWin} / 分${r.draw} / 3点差${s(r.goalMargin3Bonus)} / ハットトリック${s(r.hatTrickBonus)}`,
+    `決勝T進出${s(r.knockoutQualifiedBonus)} / 3位${s(r.thirdPlaceBonus)} / 準優勝${s(r.runnerUpBonus)} / 優勝${s(r.championBonus)} / 全敗${s(r.allLossBonus)}`,
+    `MVP${s(r.mvpBonus)} / 得点王${s(r.topScorerBonus)} / 黄4枚${s(r.yellowCardsFourPenalty)} / 赤${s(r.redCardPenalty)} / OG${s(r.ownGoalPenalty)} / 日本${r.japanMultiplier}倍`,
     publicAppUrl(),
   ].join('\n')
+}
+
+async function rulesReply() {
+  const rules = await loadCurrentInsiderRules()
+  if (!rules) return `秘書トラペル子です。WC☆2026の配点ルールはこちら。\n${publicAppUrl()}`
+  return formatRulesMessage(rules)
 }
 
 function isValidLineSignature(bodyText, signature) {
