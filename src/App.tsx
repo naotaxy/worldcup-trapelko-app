@@ -20,7 +20,7 @@ import {
 import './App.css'
 import { BoardView } from './components/BoardView'
 import { CountrySlot, type SlotCountry } from './components/CountrySlot'
-import { GoogleMatchCard } from './components/GoogleMatchCard'
+import { GoogleMatchCard, KnockoutMatchCard } from './components/GoogleMatchCard'
 import { RoomsPanel } from './components/RoomsPanel'
 import { RulesEditor } from './components/RulesEditor'
 import { SettingsBar } from './components/SettingsBar'
@@ -316,7 +316,19 @@ function App() {
     }
     return out
   }, [odds])
+  const groupStageComplete = useMemo(
+    () => liveFixtures.length > 0 && liveFixtures.every((match) => match.result.home !== null && match.result.away !== null),
+    [liveFixtures],
+  )
   const activeMatches = useMemo(() => liveFixtures.filter((match) => match.group === activeGroup), [liveFixtures, activeGroup])
+  const upcomingKnockoutMatches = useMemo(
+    () =>
+      (bracket ?? [])
+        .flatMap((round) => round.matches.map((match) => ({ match, roundLabel: round.label })))
+        .filter(({ match }) => match.status !== 'post')
+        .sort((a, b) => knockoutMatchTime(a.match.date) - knockoutMatchTime(b.match.date)),
+    [bracket],
+  )
   const selectedMatch = useMemo<Match>(
     () => liveFixtures.find((match) => match.id === selectedMatchId) || activeMatches[0] || liveFixtures[0] || (fixtures[0] as Match),
     [activeMatches, liveFixtures, selectedMatchId],
@@ -882,22 +894,32 @@ function App() {
         />
 
         <section className="panel match-panel" id="match-desk">
-          <PanelTitle icon={<Bell size={18} />} title="試合・結果" note="" />
+          <PanelTitle icon={<Bell size={18} />} title={t('試合・結果')} note="" />
           <div className="google-match-list">
-            {activeMatches.map((match) => (
-              <GoogleMatchCard
-                key={match.id}
-                match={match}
-                selected={selectedMatch.id === match.id}
-                onSelect={() => setSelectedMatchId(match.id)}
-                kickoff={schedule[match.id]}
-                homeOwner={teamOwnersByTeam.get(match.homeTeamId)}
-                awayOwner={teamOwnersByTeam.get(match.awayTeamId)}
-                homeOdds={odds[match.id]?.[match.homeTeamId]}
-                awayOdds={odds[match.id]?.[match.awayTeamId]}
-                drawOdds={odds[match.id]?.draw}
-              />
-            ))}
+            {groupStageComplete ? (
+              upcomingKnockoutMatches.length > 0 ? (
+                upcomingKnockoutMatches.map(({ match, roundLabel }) => (
+                  <KnockoutMatchCard key={match.id} match={match} roundLabel={roundLabel} owners={teamOwnersByTeam} odds={odds} />
+                ))
+              ) : (
+                <p className="match-desk-note">{t('決勝トーナメントの日程を取得中…')}</p>
+              )
+            ) : (
+              activeMatches.map((match) => (
+                <GoogleMatchCard
+                  key={match.id}
+                  match={match}
+                  selected={selectedMatch.id === match.id}
+                  onSelect={() => setSelectedMatchId(match.id)}
+                  kickoff={schedule[match.id]}
+                  homeOwner={teamOwnersByTeam.get(match.homeTeamId)}
+                  awayOwner={teamOwnersByTeam.get(match.awayTeamId)}
+                  homeOdds={odds[match.id]?.[match.homeTeamId]}
+                  awayOdds={odds[match.id]?.[match.awayTeamId]}
+                  drawOdds={odds[match.id]?.draw}
+                />
+              ))
+            )}
           </div>
           <details className="manual-score">
             <summary className="rescue-summary">
@@ -1268,6 +1290,11 @@ function teamName(teamId: string): string {
 
 function teamNameJa(teamId: string): string {
   return teamNamesJa[teamId] || teams.find((team) => team.id === teamId)?.name || teamId
+}
+
+function knockoutMatchTime(iso: string): number {
+  const time = new Date(iso).getTime()
+  return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time
 }
 
 function slotCountryFromTeam(team: Team): SlotCountry {
