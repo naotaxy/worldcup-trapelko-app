@@ -190,12 +190,6 @@ function createCountryTexture(country: SlotCountry, active: boolean): THREE.Canv
   context.font = '900 48px system-ui, sans-serif'
   context.fillText(country.shortName, 210, 184)
 
-  context.fillStyle = active ? '#11170d' : '#f4ce59'
-  context.font = '900 64px system-ui, sans-serif'
-  context.textAlign = 'right'
-  context.fillText('DRAFT', 852, 124)
-  context.textAlign = 'left'
-
   const texture = new THREE.CanvasTexture(canvas)
   texture.colorSpace = THREE.SRGBColorSpace
   texture.needsUpdate = true
