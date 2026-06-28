@@ -1,6 +1,8 @@
 import { teamNamesJa, teams } from '../data/worldCup2026'
+import { knockoutChannelForKickoff } from '../data/knockoutBroadcasts'
 import { flagUrl, matchWasPlayed } from '../logic/score'
-import { formatDateShort, formatKickoff, useSettings } from '../lib/i18n'
+import { formatDateShort, formatKickoff, useSettings, useT } from '../lib/i18n'
+import type { BracketMatch, BracketTeam } from '../lib/bracket'
 import type { Match, Team } from '../types'
 
 export function GoogleMatchCard({
@@ -54,6 +56,67 @@ export function GoogleMatchCard({
   )
 }
 
+export function KnockoutMatchCard({
+  match,
+  roundLabel,
+  owners,
+  odds,
+  selected = false,
+  onSelect,
+}: {
+  match: BracketMatch
+  roundLabel: string
+  owners: Map<string, string>
+  odds: Record<string, Record<string, number>>
+  selected?: boolean
+  onSelect?: () => void
+}) {
+  const { lang, tz } = useSettings()
+  const t = useT()
+  const channel = knockoutChannelForKickoff(match.date)
+  const matchOdds = odds[match.id]
+  const drawOdds = matchOdds?.draw
+  const statusLabel = match.status === 'post' ? t('終了') : match.status === 'in' ? t('試合中') : t('試合前')
+  const className = selected ? 'google-match-card knockout-match-card active' : 'google-match-card knockout-match-card'
+  const body = (
+    <>
+      <div className="google-match-meta knockout-match-meta">
+        <span>{formatKickoff(match.date, tz, lang)}</span>
+        <strong>{roundLabel}</strong>
+        <span className={channel === 'DAZN' ? 'schedule-channel knockout-channel dazn' : 'schedule-channel knockout-channel'}>
+          {channel}
+        </span>
+        {drawOdds != null ? <span className="draw-odds">{`${t('引分')} ${drawOdds.toFixed(2)}倍`}</span> : null}
+        <em>{statusLabel}</em>
+      </div>
+      <KnockoutTeamScoreLine team={match.home} owner={match.home.teamId ? owners.get(match.home.teamId) : undefined} odds={match.home.teamId ? matchOdds?.[match.home.teamId] : undefined} />
+      <KnockoutTeamScoreLine team={match.away} owner={match.away.teamId ? owners.get(match.away.teamId) : undefined} odds={match.away.teamId ? matchOdds?.[match.away.teamId] : undefined} />
+    </>
+  )
+
+  return onSelect ? (
+    <button type="button" className={className} onClick={onSelect}>
+      {body}
+    </button>
+  ) : (
+    <article className={className}>{body}</article>
+  )
+}
+
+function KnockoutTeamScoreLine({ team, owner, odds }: { team: BracketTeam; owner?: string; odds?: number }) {
+  return (
+    <div className={team.winner ? 'team-score-line knockout-team-line winner' : 'team-score-line knockout-team-line'}>
+      <span>
+        {team.flag ? <img src={team.flag} alt="" /> : <span className="knockout-flag-placeholder" />}
+        <span className="knockout-team-name">{team.name}</span>
+        {owner ? <em className="match-owner">{owner}</em> : null}
+        {odds != null ? <em className="match-odds">{odds.toFixed(2)}倍</em> : null}
+      </span>
+      <strong>{team.score ?? '-'}</strong>
+    </div>
+  )
+}
+
 function TeamScoreLine({
   team,
   score,
@@ -89,4 +152,3 @@ function isMatchWinner(match: Match, side: 'home' | 'away'): boolean {
 function teamNameJa(teamId: string): string {
   return teamNamesJa[teamId] || teams.find((team) => team.id === teamId)?.name || teamId
 }
-

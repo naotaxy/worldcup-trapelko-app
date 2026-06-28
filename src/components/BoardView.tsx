@@ -17,7 +17,7 @@ import type { AwardSettings, Group, GroupCode, Match, Member, Rules, TeamSelecti
 import type { PlayerStat } from '../lib/api'
 import type { BracketMatch, BracketRound, BracketTeam } from '../lib/bracket'
 import { ProjectionGraph } from './ProjectionGraph'
-import { GoogleMatchCard } from './GoogleMatchCard'
+import { GoogleMatchCard, KnockoutMatchCard } from './GoogleMatchCard'
 import { TeamDetailModal } from './TeamDetailModal'
 import { formatKickoff, useSettings, useT } from '../lib/i18n'
 
@@ -80,6 +80,14 @@ export function BoardView({
   )
   const activeRows = useMemo(() => groupStandings(teamStandings, activeGroup), [teamStandings, activeGroup])
   const activeMatches = useMemo(() => liveFixtures.filter((match) => match.group === activeGroup), [activeGroup, liveFixtures])
+  const upcomingKnockoutMatches = useMemo(
+    () =>
+      (bracket ?? [])
+        .flatMap((round) => round.matches.map((match) => ({ match, roundLabel: round.label })))
+        .filter(({ match }) => match.status !== 'post')
+        .sort((a, b) => knockoutMatchTime(a.match.date) - knockoutMatchTime(b.match.date)),
+    [bracket],
+  )
   const selectedPublicMatch = useMemo(
     () => activeMatches.find((match) => match.id === selectedPublicMatchId) || activeMatches[0] || liveFixtures[0],
     [activeMatches, liveFixtures, selectedPublicMatchId],
@@ -201,20 +209,30 @@ export function BoardView({
         <section className="panel match-panel" id={sectionId('match-desk')}>
           <PanelTitle icon={<Bell size={18} />} title={t('試合・結果')} note="" />
           <div className="google-match-list">
-            {activeMatches.map((match) => (
-              <GoogleMatchCard
-                key={match.id}
-                match={match}
-                selected={selectedPublicMatch?.id === match.id}
-                onSelect={() => setSelectedPublicMatchId(match.id)}
-                kickoff={schedule[match.id]}
-                homeOwner={teamOwnersByTeam.get(match.homeTeamId)}
-                awayOwner={teamOwnersByTeam.get(match.awayTeamId)}
-                homeOdds={odds[match.id]?.[match.homeTeamId]}
-                awayOdds={odds[match.id]?.[match.awayTeamId]}
-                drawOdds={odds[match.id]?.draw}
-              />
-            ))}
+            {groupStageComplete ? (
+              upcomingKnockoutMatches.length > 0 ? (
+                upcomingKnockoutMatches.map(({ match, roundLabel }) => (
+                  <KnockoutMatchCard key={match.id} match={match} roundLabel={roundLabel} owners={teamOwnersByTeam} odds={odds} />
+                ))
+              ) : (
+                <p className="match-desk-note">{t('決勝トーナメントの日程を取得中…')}</p>
+              )
+            ) : (
+              activeMatches.map((match) => (
+                <GoogleMatchCard
+                  key={match.id}
+                  match={match}
+                  selected={selectedPublicMatch?.id === match.id}
+                  onSelect={() => setSelectedPublicMatchId(match.id)}
+                  kickoff={schedule[match.id]}
+                  homeOwner={teamOwnersByTeam.get(match.homeTeamId)}
+                  awayOwner={teamOwnersByTeam.get(match.awayTeamId)}
+                  homeOdds={odds[match.id]?.[match.homeTeamId]}
+                  awayOdds={odds[match.id]?.[match.awayTeamId]}
+                  drawOdds={odds[match.id]?.draw}
+                />
+              ))
+            )}
           </div>
         </section>
       ) : null}
@@ -383,6 +401,11 @@ function MatchSchedule({
 
 function formatOdds(value: number): string {
   return `${value.toFixed(2)}倍`
+}
+
+function knockoutMatchTime(iso: string): number {
+  const time = new Date(iso).getTime()
+  return Number.isNaN(time) ? Number.POSITIVE_INFINITY : time
 }
 
 function KnockoutBracket({

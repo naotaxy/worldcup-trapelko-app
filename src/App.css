@@ -2005,6 +2005,33 @@ input {
   font-weight: 800;
 }
 
+.knockout-match-card {
+  cursor: default;
+}
+
+.knockout-match-meta {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.knockout-match-meta > span:first-child {
+  min-width: min(142px, 100%);
+  overflow-wrap: anywhere;
+}
+
+.knockout-channel {
+  margin-left: auto;
+}
+
+.match-desk-note {
+  margin: 0;
+  padding: 10px 2px;
+  color: #9fb2da;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .team-score-line {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -2048,6 +2075,38 @@ input {
 .team-score-line.winner strong {
   background: #2e7d5b;
   color: #fff;
+}
+
+.knockout-team-line {
+  min-width: 0;
+}
+
+.knockout-team-line > span {
+  flex-wrap: wrap;
+  row-gap: 4px;
+  overflow: visible;
+  white-space: normal;
+}
+
+.knockout-team-line .match-owner,
+.knockout-team-line .match-odds {
+  margin-left: 0;
+}
+
+.knockout-team-line .knockout-team-name {
+  display: inline;
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.knockout-team-line .knockout-flag-placeholder {
+  display: inline-block;
+  width: 30px;
+  height: 21px;
+  flex: 0 0 auto;
+  border-radius: 3px;
+  background: rgba(150, 185, 255, 0.15);
 }
 
 .google-match-links {
