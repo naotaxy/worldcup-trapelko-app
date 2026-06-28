@@ -140,10 +140,15 @@ export function knockoutQualifiersFromStandings(groups: Group[], teamStandings: 
   return ids
 }
 
+// rescueBaselines: 救済で取った国は「取得時点のチーム得点(baseline)」を引き継がず、
+// 以降の増分だけを保有者の得点にする。キーは `${memberId}:${teamId}`。
+// 該当する国だけ、その保有者向けに fantasyPoints を (得点 - baseline) に補正した
+// クローンを表示・合計に使う(チップ表示と合計が一致する)。
 export function calculateMemberStandings(
   members: Member[],
   selections: TeamSelection[],
   teamStandings: TeamStanding[],
+  rescueBaselines?: Map<string, number>,
 ): MemberStanding[] {
   const teamRows = new Map(teamStandings.map((row) => [row.team.id, row]))
 
@@ -151,7 +156,15 @@ export function calculateMemberStandings(
     .map((member) => {
       const ownedTeams = selections
         .filter((selection) => selection.memberId === member.id)
-        .map((selection) => teamRows.get(selection.teamId))
+        .map((selection) => {
+          const row = teamRows.get(selection.teamId)
+          if (!row) return undefined
+          const baseline = rescueBaselines?.get(`${member.id}:${selection.teamId}`)
+          if (baseline != null) {
+            return { ...row, fantasyPoints: roundPoint(row.fantasyPoints - baseline) }
+          }
+          return row
+        })
         .filter((row): row is TeamStanding => Boolean(row))
 
       return {

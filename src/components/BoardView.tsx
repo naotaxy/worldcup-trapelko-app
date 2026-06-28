@@ -30,6 +30,7 @@ export type BoardViewProps = {
   rules: Rules | RulesTimeline
   awards: AwardSettings
   teamStandings: TeamStanding[]
+  rescueBaselines?: Map<string, number>
   liveFixtures: Match[]
   groups: Group[]
   qualifierIds: Set<string>
@@ -52,6 +53,7 @@ export function BoardView({
   rules,
   awards,
   teamStandings,
+  rescueBaselines,
   liveFixtures,
   groups,
   qualifierIds,
@@ -94,8 +96,8 @@ export function BoardView({
     [activeMatches, liveFixtures, selectedPublicMatchId],
   )
   const memberStandings = useMemo(
-    () => calculateMemberStandings(members, selections, teamStandings),
-    [members, selections, teamStandings],
+    () => calculateMemberStandings(members, selections, teamStandings, rescueBaselines),
+    [members, selections, teamStandings, rescueBaselines],
   )
   const memberProjections = useMemo(
     () =>
@@ -111,8 +113,9 @@ export function BoardView({
         qualifierIds,
         odds,
         schedule,
+        rescueBaselines,
       ),
-    [awards, effectiveProjectionMode, groups, liveFixtures, members, odds, oddsProbs, qualifierIds, rules, schedule, selections],
+    [awards, effectiveProjectionMode, groups, liveFixtures, members, odds, oddsProbs, qualifierIds, rescueBaselines, rules, schedule, selections],
   )
   const teamOwnersByTeam = useMemo(() => {
     const owners = new Map<string, string>()

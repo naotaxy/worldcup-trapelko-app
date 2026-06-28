@@ -202,15 +202,33 @@ function selectionRowsToMemberSelections(rows) {
     .filter((selection) => selection.memberId && selection.teamId)
 }
 
-async function fetchRescueSelections() {
+// 救済ピックを baseline 付きで取得。baseline_points 列が未作成でも安全に動く。
+async function fetchRescuePicks() {
   if (!supabase) return []
   try {
-    const { data, error } = await supabase.from('rescue_picks').select('team_id, members(member_key)')
-    if (error) return []
-    return selectionRowsToMemberSelections(data)
+    let res = await supabase.from('rescue_picks').select('team_id, baseline_points, members(member_key)')
+    if (res.error) {
+      // baseline_points 列が無い旧スキーマへのフォールバック(baseline=0扱い)
+      res = await supabase.from('rescue_picks').select('team_id, members(member_key)')
+      if (res.error) return []
+    }
+    return (res.data || [])
+      .map((row) => ({
+        memberId: joinedMemberKey(row.members),
+        teamId: row.team_id,
+        baseline: Number(row.baseline_points) || 0,
+      }))
+      .filter((pick) => pick.memberId && pick.teamId)
   } catch {
     return []
   }
+}
+
+// `${memberKey}:${teamId}` -> baseline。calculateMemberStandings に渡す。
+function rescueBaselineMap(rescuePicks) {
+  const map = new Map()
+  for (const pick of rescuePicks) map.set(`${pick.memberId}:${pick.teamId}`, pick.baseline)
+  return map
 }
 
 // Combined live sync: ESPN (scores + events) + football-data fallback.
@@ -1149,18 +1167,33 @@ app.post('/api/rescue', async (req, res) => {
       return
     }
 
-    const { error } = await supabase.from('rescue_picks').upsert(
-      {
-        member_id: member.id,
-        team_id: teamId,
-      },
+    // 救済は「取得時点のチーム得点」を引き継がない。今のチーム得点を baseline として記録し、
+    // 以降の増分だけを救済者の得点にする。
+    let baseline = 0
+    try {
+      const computed = await computeStandingsFromDb()
+      const teamRow = computed?.teamStandings?.find((row) => row.team.id === teamId)
+      baseline = Math.round(Number(teamRow?.fantasyPoints) || 0)
+    } catch {
+      baseline = 0
+    }
+
+    let { error } = await supabase.from('rescue_picks').upsert(
+      { member_id: member.id, team_id: teamId, baseline_points: baseline },
       { onConflict: 'member_id' },
     )
+    if (error) {
+      // baseline_points 列が未作成の場合は baseline 無しで保存(後で再登録すれば反映)
+      const retry = await supabase
+        .from('rescue_picks')
+        .upsert({ member_id: member.id, team_id: teamId }, { onConflict: 'member_id' })
+      error = retry.error
+    }
     if (error) {
       res.status(500).json({ ok: false, error: 'rescue save failed' })
       return
     }
-    res.json({ ok: true })
+    res.json({ ok: true, baseline })
   } catch (error) {
     console.error('[server] /api/rescue', error)
     res.status(500).json({ ok: false, error: 'rescue save failed' })
@@ -1176,14 +1209,17 @@ app.get('/api/state', async (_req, res) => {
   }
 
   try {
-    const [rulesetRes, selectionsRes, rescueSelections, resultsRes] = await Promise.all([
+    const [rulesetRes, selectionsRes, rescuePicks, resultsRes] = await Promise.all([
       supabase.from('rulesets').select('*').eq('id', 'default').maybeSingle(),
       supabase.from('selections').select('team_id, owner_slot, members(member_key)'),
-      fetchRescueSelections(),
+      fetchRescuePicks(),
       supabase.from('match_results').select('*'),
     ])
 
-    const selections = [...selectionRowsToMemberSelections(selectionsRes.data), ...rescueSelections]
+    const selections = [
+      ...selectionRowsToMemberSelections(selectionsRes.data),
+      ...rescuePicks.map((pick) => ({ memberId: pick.memberId, teamId: pick.teamId })),
+    ]
 
     const results = {}
     for (const row of resultsRes.data || []) {
@@ -1207,6 +1243,7 @@ app.get('/api/state', async (_req, res) => {
         : undefined,
       awards: rulesetRes.data?.awards || null,
       selections,
+      rescues: rescuePicks,
       results,
       playerStats: playerStatsCache,
     })
@@ -1854,10 +1891,10 @@ async function computeStandingsFromDb() {
     import('../src/data/worldCup2026.ts'),
     import('../src/lib/bracket.ts'),
   ])
-  const [rulesetRes, selectionsRes, rescueSelections, resultsRes, membersRes] = await Promise.all([
+  const [rulesetRes, selectionsRes, rescuePicks, resultsRes, membersRes] = await Promise.all([
     supabase.from('rulesets').select('*').eq('id', 'default').maybeSingle(),
     supabase.from('selections').select('team_id, members(member_key)'),
-    fetchRescueSelections(),
+    fetchRescuePicks(),
     supabase.from('match_results').select('*'),
     supabase.from('members').select('member_key, real_name'),
   ])
@@ -1876,7 +1913,10 @@ async function computeStandingsFromDb() {
     avatar: '',
     accent: '',
   }))
-  const selections = [...selectionRowsToMemberSelections(selectionsRes.data), ...rescueSelections]
+  const selections = [
+    ...selectionRowsToMemberSelections(selectionsRes.data),
+    ...rescuePicks.map((pick) => ({ memberId: pick.memberId, teamId: pick.teamId })),
+  ]
   const resultsMap = {}
   for (const entry of resultsRes.data || []) {
     const eventPayload = entry.event_payload || {}
@@ -1907,7 +1947,7 @@ async function computeStandingsFromDb() {
     tournament.odds,
     tournament.schedule,
   )
-  const memberStandings = logic.calculateMemberStandings(members, selections, teamStandings)
+  const memberStandings = logic.calculateMemberStandings(members, selections, teamStandings, rescueBaselineMap(rescuePicks))
   return { data, teamStandings, memberStandings, selections, members }
 }
 

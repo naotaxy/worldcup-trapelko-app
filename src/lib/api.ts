@@ -21,6 +21,7 @@ export type ServerState = {
   rulesTimeline?: RulesTimeline
   awards?: AwardSettings
   selections?: TeamSelection[]
+  rescues?: { memberId: string; teamId: string; baseline: number }[]
   results?: Record<string, MatchResult>
   playerStats?: Record<string, PlayerStat>
 }

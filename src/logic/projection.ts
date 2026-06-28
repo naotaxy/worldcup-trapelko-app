@@ -31,9 +31,10 @@ export function calculateFinalProjections(
   liveQualifierIds?: Set<string>,
   oddsByFixture?: Record<string, Record<string, number>>,
   schedule?: Record<string, string>,
+  rescueBaselines?: Map<string, number>,
 ): MemberProjection[] {
   const currentTeams = calculateTeamStandings(groups, fixtures, rules, awards, liveQualifierIds, oddsByFixture, schedule)
-  const currentMembers = calculateMemberStandings(members, selections, currentTeams)
+  const currentMembers = calculateMemberStandings(members, selections, currentTeams, rescueBaselines)
   const currentByMember = new Map(currentMembers.map((row) => [row.member.id, row.total]))
   const sampleByMember = new Map(members.map((member) => [member.id, [] as number[]]))
   const baseSeed = hashSeed(
@@ -59,7 +60,7 @@ export function calculateFinalProjections(
             fantasyPoints: roundPoint(Math.max(0, row.fantasyPoints + historicalDemoAdjustment(row.team, rng))),
           }))
         : teamRows
-    const memberRows = calculateMemberStandings(members, selections, projectedTeamRows)
+    const memberRows = calculateMemberStandings(members, selections, projectedTeamRows, rescueBaselines)
     memberRows.forEach((row) => sampleByMember.get(row.member.id)?.push(row.total))
   }
 

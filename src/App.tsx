@@ -195,6 +195,8 @@ function App() {
   const [selectedMatchId, setSelectedMatchId] = useState('F-1')
   const [saveLabel, setSaveLabel] = useState('保存待ち')
   const [draftSelections, setDraftSelections] = useState<TeamSelection[]>(() => initialLocalState()?.selections ?? demoSelections)
+  // 救済で取った国の baseline(取得時点のチーム得点)。キー `${memberId}:${teamId}`。
+  const [rescueBaselines, setRescueBaselines] = useState<Map<string, number>>(() => new Map())
   const [manualMemberId, setManualMemberId] = useState(demoMembers[0].id)
   const [manualTeamId, setManualTeamId] = useState(teams[0].id)
   const [manualMessage, setManualMessage] = useState('選挙で決まった組み合わせを手動で登録できます')
@@ -252,6 +254,9 @@ function App() {
         }
         if (shared.awards) setAwards(shared.awards)
         if (shared.selections && shared.selections.length > 0) setDraftSelections(shared.selections)
+        if (shared.rescues) {
+          setRescueBaselines(new Map(shared.rescues.map((pick) => [`${pick.memberId}:${pick.teamId}`, pick.baseline])))
+        }
         if (shared.results) setLiveFixtures((current) => applyResultMap(current, shared.results!))
         if (shared.playerStats) setPlayerStats(shared.playerStats)
       }
@@ -569,6 +574,9 @@ function App() {
 
     const nextSelections = [...draftSelections, { memberId: draftMember.id, teamId: slotResultTeam.id }]
     setDraftSelections(nextSelections)
+    // 救済は取得時点のチーム得点を引き継がない。今のチーム得点を baseline として即時反映。
+    const rescueBaseline = teamStandings.find((row) => row.team.id === slotResultTeam.id)?.fantasyPoints ?? 0
+    setRescueBaselines((current) => new Map(current).set(`${draftMember.id}:${slotResultTeam.id}`, rescueBaseline))
     setSlotPhase('idle')
     setSlotResultId(null)
     setSlotPendingResultId(null)
@@ -984,6 +992,7 @@ function App() {
           rules={rulesTimeline}
           awards={awards}
           teamStandings={teamStandings}
+          rescueBaselines={rescueBaselines}
           liveFixtures={liveFixtures}
           groups={groups}
           qualifierIds={qualifierIds}
