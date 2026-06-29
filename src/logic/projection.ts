@@ -1,4 +1,5 @@
 import type { AwardSettings, Group, Match, MatchResult, Member, Rules, Team, TeamSelection } from '../types'
+import type { KnockoutScore } from '../lib/bracket'
 import { calculateMemberStandings, calculateTeamStandings, knockoutQualifiersFromStandings, matchWasPlayed, type RulesTimeline } from './score'
 
 export type MemberProjection = {
@@ -32,8 +33,9 @@ export function calculateFinalProjections(
   oddsByFixture?: Record<string, Record<string, number>>,
   schedule?: Record<string, string>,
   rescueBaselines?: Map<string, number>,
+  knockoutMatchScores?: KnockoutScore[],
 ): MemberProjection[] {
-  const currentTeams = calculateTeamStandings(groups, fixtures, rules, awards, liveQualifierIds, oddsByFixture, schedule)
+  const currentTeams = calculateTeamStandings(groups, fixtures, rules, awards, liveQualifierIds, oddsByFixture, schedule, knockoutMatchScores)
   const currentMembers = calculateMemberStandings(members, selections, currentTeams, rescueBaselines)
   const currentByMember = new Map(currentMembers.map((row) => [row.member.id, row.total]))
   const sampleByMember = new Map(members.map((member) => [member.id, [] as number[]]))
@@ -52,7 +54,7 @@ export function calculateFinalProjections(
     const simulatedAwards = resolveAwards(groups, simulatedFixtures, rules, awards, rng)
     const simBaseRows = calculateTeamStandings(groups, simulatedFixtures, baselineRules(), emptyAwards())
     const simQualifiers = knockoutQualifiersFromStandings(groups, simBaseRows)
-    const teamRows = calculateTeamStandings(groups, simulatedFixtures, rules, simulatedAwards, simQualifiers, oddsByFixture, schedule)
+    const teamRows = calculateTeamStandings(groups, simulatedFixtures, rules, simulatedAwards, simQualifiers, oddsByFixture, schedule, knockoutMatchScores)
     const projectedTeamRows =
       mode === 'historyDemo'
         ? teamRows.map((row) => ({

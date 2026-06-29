@@ -16,6 +16,7 @@ import { calculateFinalProjections, type MatchProb, type ProjectionMode } from '
 import type { AwardSettings, Group, GroupCode, Match, Member, Rules, TeamSelection, TeamStanding } from '../types'
 import type { PlayerStat } from '../lib/api'
 import type { BracketMatch, BracketRound, BracketTeam } from '../lib/bracket'
+import { knockoutScores } from '../lib/bracket'
 import { ProjectionGraph } from './ProjectionGraph'
 import { GoogleMatchCard, KnockoutMatchCard } from './GoogleMatchCard'
 import { TeamDetailModal } from './TeamDetailModal'
@@ -108,6 +109,7 @@ export function BoardView({
     }
     return ids
   }, [bracket])
+  const knockoutScoreList = useMemo(() => knockoutScores(bracket), [bracket])
   const selectedPublicMatch = useMemo(
     () => activeMatches.find((match) => match.id === selectedPublicMatchId) || activeMatches[0] || liveFixtures[0],
     [activeMatches, liveFixtures, selectedPublicMatchId],
@@ -131,8 +133,9 @@ export function BoardView({
         odds,
         schedule,
         rescueBaselines,
+        knockoutScoreList,
       ),
-    [awards, effectiveProjectionMode, groups, liveFixtures, members, odds, oddsProbs, qualifierIds, rescueBaselines, rules, schedule, selections],
+    [awards, effectiveProjectionMode, groups, knockoutScoreList, liveFixtures, members, odds, oddsProbs, qualifierIds, rescueBaselines, rules, schedule, selections],
   )
   const teamOwnersByTeam = useMemo(() => {
     const owners = new Map<string, string>()
@@ -156,7 +159,7 @@ export function BoardView({
   const selectedTeamModal = selectedTeam ? (
     <TeamDetailModal
       team={selectedTeam}
-      breakdown={calculateTeamBreakdown(selectedTeam, groups, liveFixtures, rules, awards, qualifierIds, odds, schedule)}
+      breakdown={calculateTeamBreakdown(selectedTeam, groups, liveFixtures, rules, awards, qualifierIds, odds, schedule, knockoutScoreList)}
       owners={teamOwnersByTeam.get(selectedTeam.id) || '未決定'}
       players={pdfSquads[selectedTeam.id] || []}
       playerStats={playerStats}
