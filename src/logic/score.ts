@@ -1,6 +1,25 @@
 import type { AwardSettings, Group, Match, Member, MemberStanding, Rules, Team, TeamSelection, TeamStanding } from '../types'
+import type { KnockoutScore } from '../lib/bracket'
 
 type MutableStanding = Omit<TeamStanding, 'rank'> & { rank: number }
+
+// 決勝Tの1試合の保有者得点(イベント未対応=勝/PK/3点差のみ)。負け/敗退は0。
+function knockoutMatchPoints(
+  gf: number,
+  ga: number,
+  myPk: boolean,
+  oppPk: boolean,
+  rules: Rules,
+): { kind: 'win' | 'pkwin' | 'none'; margin3: boolean; points: number } {
+  if (gf > ga) {
+    const margin3 = gf - ga >= 3
+    return { kind: 'win', margin3, points: rules.win + (margin3 ? rules.goalMargin3Bonus : 0) }
+  }
+  if (myPk && !oppPk && gf === ga) {
+    return { kind: 'pkwin', margin3: false, points: rules.penaltyWin }
+  }
+  return { kind: 'none', margin3: false, points: 0 }
+}
 
 export function flagUrl(flag: string): string {
   return `https://flagcdn.com/${flag}.svg`
@@ -57,6 +76,7 @@ export function calculateTeamStandings(
   knockoutQualifierIds?: Set<string>,
   oddsByFixture?: Record<string, Record<string, number>>,
   schedule?: Record<string, string>,
+  knockoutMatchScores?: KnockoutScore[],
 ): TeamStanding[] {
   const timeline = toRulesTimeline(rules)
   const latest = timeline[timeline.length - 1].rules
@@ -87,6 +107,19 @@ export function calculateTeamStandings(
     if (!home || !away || match.result.home === null || match.result.away === null) return
 
     applyMatch(home, away, match, rulesForKickoff(timeline, kickoffOf(match, schedule)), oddsByFixture)
+  })
+
+  // 決勝Tの試合を予選と同じく1試合ごとに加点(勝/PK/3点差)。グループ表のW/D/Lは汚さず
+  // fantasyPoints のみ加算し、後段の日本2倍はこの合計に適用される。
+  ;(knockoutMatchScores ?? []).forEach((ko) => {
+    const home = rows.get(ko.homeTeamId)
+    const away = rows.get(ko.awayTeamId)
+    if (!home || !away) return
+    const koRules = rulesForKickoff(timeline, ko.kickoff)
+    const homePts = knockoutMatchPoints(ko.homeScore, ko.awayScore, ko.homePenaltyWin, ko.awayPenaltyWin, koRules).points
+    const awayPts = knockoutMatchPoints(ko.awayScore, ko.homeScore, ko.awayPenaltyWin, ko.homePenaltyWin, koRules).points
+    home.fantasyPoints = roundPoint(home.fantasyPoints + homePts)
+    away.fantasyPoints = roundPoint(away.fantasyPoints + awayPts)
   })
 
   return groups.flatMap((group) => {
@@ -203,10 +236,11 @@ export function calculateTeamBreakdown(
   knockoutQualifierIds?: Set<string>,
   oddsByFixture?: Record<string, Record<string, number>>,
   schedule?: Record<string, string>,
+  knockoutMatchScores?: KnockoutScore[],
 ): TeamBreakdown {
   const timeline = toRulesTimeline(rules)
   const latest = timeline[timeline.length - 1].rules
-  const standings = calculateTeamStandings(groups, matches, rules, awards, knockoutQualifierIds, oddsByFixture, schedule)
+  const standings = calculateTeamStandings(groups, matches, rules, awards, knockoutQualifierIds, oddsByFixture, schedule, knockoutMatchScores)
   const standing = standings.find((row) => row.team.id === team.id)
   const groupMatches = matches.filter((match) => match.group === team.group)
   const groupComplete = groupMatches.length > 0 && groupMatches.every(matchWasPlayed)
@@ -282,6 +316,36 @@ export function calculateTeamBreakdown(
     }
   }
 
+  // 決勝Tの試合(勝/PK/3点差)。予選とは別コンポーネントで内訳に表示。負けは0。
+  let koWins = 0
+  let koPkWins = 0
+  let koMargin3 = 0
+  let koWinPoints = 0
+  let koPkWinPoints = 0
+  let koMargin3Points = 0
+  for (const ko of knockoutMatchScores ?? []) {
+    const isHome = ko.homeTeamId === team.id
+    const isAway = ko.awayTeamId === team.id
+    if (!isHome && !isAway) continue
+    const r = rulesForKickoff(timeline, ko.kickoff)
+    const gf = isHome ? ko.homeScore : ko.awayScore
+    const ga = isHome ? ko.awayScore : ko.homeScore
+    const myPk = isHome ? ko.homePenaltyWin : ko.awayPenaltyWin
+    const oppPk = isHome ? ko.awayPenaltyWin : ko.homePenaltyWin
+    const out = knockoutMatchPoints(gf, ga, myPk, oppPk, r)
+    if (out.kind === 'win') {
+      koWins += 1
+      koWinPoints += r.win
+      if (out.margin3) {
+        koMargin3 += 1
+        koMargin3Points += r.goalMargin3Bonus
+      }
+    } else if (out.kind === 'pkwin') {
+      koPkWins += 1
+      koPkWinPoints += r.penaltyWin
+    }
+  }
+
   const components: TeamPointComponent[] = []
   const add = (key: string, label: string, count: number, unit: number) => {
     if (count === 0 || unit === 0) return
@@ -299,6 +363,9 @@ export function calculateTeamBreakdown(
   addPoints('yellowCardsFourPenalty', '黄カード4枚', yellowQuads, yellowQuadPoints)
   addPoints('redCardPenalty', 'レッドカード', redCards, redCardPoints)
   addPoints('ownGoalPenalty', 'オウンゴール', ownGoals, ownGoalPoints)
+  addPoints('koWin', '決勝T 勝ち', koWins, koWinPoints)
+  addPoints('koPenaltyWin', '決勝T PK勝ち', koPkWins, koPkWinPoints)
+  addPoints('koGoalMargin3', '決勝T 3点差勝ち', koMargin3, koMargin3Points)
   const qualifiedForKnockout =
     knockoutQualifierIds && knockoutQualifierIds.size > 0
       ? knockoutQualifierIds.has(team.id)

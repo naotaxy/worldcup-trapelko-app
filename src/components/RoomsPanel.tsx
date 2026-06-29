@@ -6,6 +6,7 @@ import type { MatchProb, ProjectionMode } from '../logic/projection'
 import type { AwardSettings, Group, Match, Member, Rules, TeamSelection } from '../types'
 import type { PlayerStat } from '../lib/api'
 import type { BracketRound } from '../lib/bracket'
+import { knockoutScores } from '../lib/bracket'
 import { buildRulesTimeline, currentRulesOf, normalizeRules, normalizeTimeline, type RulesUpdateMode } from '../lib/publicRules'
 import { useT } from '../lib/i18n'
 import { BoardView } from './BoardView'
@@ -550,9 +551,10 @@ function RoomReveal({
     [room.rulesTimeline, room.rules],
   )
   const roomRules = useMemo(() => currentRulesOf(roomTimeline), [roomTimeline])
+  const knockoutScoreList = useMemo(() => knockoutScores(bracket), [bracket])
   const teamStandings = useMemo(
-    () => calculateTeamStandings(groups, liveFixtures, roomTimeline, awards, qualifierIds, odds, schedule),
-    [awards, groups, liveFixtures, odds, qualifierIds, roomTimeline, schedule],
+    () => calculateTeamStandings(groups, liveFixtures, roomTimeline, awards, qualifierIds, odds, schedule, knockoutScoreList),
+    [awards, groups, knockoutScoreList, liveFixtures, odds, qualifierIds, roomTimeline, schedule],
   )
   const members = useMemo<Member[]>(
     () =>

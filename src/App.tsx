@@ -53,7 +53,7 @@ import {
   type AnalyticsSummary,
   type PlayerStat,
 } from './lib/api'
-import { fetchTournament, knockoutTeamIds, type BracketRound } from './lib/bracket'
+import { fetchTournament, knockoutScores, knockoutTeamIds, type BracketRound } from './lib/bracket'
 import { loadLocalState, saveLocalState } from './lib/persistence'
 import { buildRulesTimeline, currentRulesOf, neutralPublicRules, normalizeTimeline, type RulesUpdateMode } from './lib/publicRules'
 
@@ -303,9 +303,10 @@ function App() {
     saveLocalState({ rules, rulesTimeline, awards, selections: draftSelections, results: extractResultMap(liveFixtures) })
   }, [rules, rulesTimeline, awards, draftSelections, liveFixtures])
 
+  const knockoutScoreList = useMemo(() => knockoutScores(bracket), [bracket])
   const teamStandings = useMemo(
-    () => calculateTeamStandings(groups, liveFixtures, rulesTimeline, awards, qualifierIds, odds, schedule),
-    [awards, liveFixtures, rulesTimeline, qualifierIds, odds, schedule],
+    () => calculateTeamStandings(groups, liveFixtures, rulesTimeline, awards, qualifierIds, odds, schedule, knockoutScoreList),
+    [awards, liveFixtures, rulesTimeline, qualifierIds, odds, schedule, knockoutScoreList],
   )
   const oddsProbs = useMemo(() => {
     const out: Record<string, { home: number; draw: number; away: number }> = {}

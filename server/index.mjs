@@ -1946,6 +1946,7 @@ async function computeStandingsFromDb() {
     qualifierIds,
     tournament.odds,
     tournament.schedule,
+    bracketMod.knockoutScores(tournament.bracket),
   )
   const memberStandings = logic.calculateMemberStandings(members, selections, teamStandings, rescueBaselineMap(rescuePicks))
   return { data, teamStandings, memberStandings, selections, members }

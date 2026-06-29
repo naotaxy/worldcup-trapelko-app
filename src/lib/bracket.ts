@@ -183,6 +183,40 @@ export async function fetchTournament(force = false): Promise<Tournament> {
   }
 }
 
+// 決勝Tの「終了した試合」のスコア。予選と同じく1試合ごとに加点するための入力。
+// イベント(HT/カード/OG)は含まない(スコア=勝/PK/3点差のみ)。PKは同点かつ勝者ありで判定。
+export type KnockoutScore = {
+  homeTeamId: string
+  awayTeamId: string
+  kickoff: string
+  homeScore: number
+  awayScore: number
+  homePenaltyWin: boolean
+  awayPenaltyWin: boolean
+}
+
+export function knockoutScores(bracket: BracketRound[] | null): KnockoutScore[] {
+  const out: KnockoutScore[] = []
+  for (const round of bracket ?? []) {
+    for (const match of round.matches) {
+      if (match.status !== 'post') continue
+      const { home, away } = match
+      if (!home.teamId || !away.teamId || home.score == null || away.score == null) continue
+      const draw = home.score === away.score
+      out.push({
+        homeTeamId: home.teamId,
+        awayTeamId: away.teamId,
+        kickoff: match.date,
+        homeScore: home.score,
+        awayScore: away.score,
+        homePenaltyWin: draw && Boolean(home.winner),
+        awayPenaltyWin: draw && Boolean(away.winner),
+      })
+    }
+  }
+  return out
+}
+
 // Team ids actually in the knockout stage (Round of 32). ESPN seeds the R32 with
 // the real qualifiers (each group's top 2 plus the 8 best third-placed teams),
 // so this is the authoritative "advanced to the knockout" set as it fills in.
