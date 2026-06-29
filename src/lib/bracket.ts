@@ -19,7 +19,7 @@ const ROUND_JA: Record<string, string> = {
   final: '決勝',
 }
 
-export type BracketTeam = { name: string; flag: string | null; score: number | null; winner: boolean; teamId: string | null }
+export type BracketTeam = { name: string; flag: string | null; score: number | null; winner: boolean; teamId: string | null; pk: number | null }
 export type BracketMatch = { id: string; date: string; status: string; home: BracketTeam; away: BracketTeam }
 export type BracketRound = { slug: string; label: string; matches: BracketMatch[] }
 
@@ -41,6 +41,7 @@ type EspnCompetitor = {
   homeAway?: string
   winner?: boolean
   score?: string | number
+  shootoutScore?: number
   team?: { abbreviation?: string; displayName?: string }
 }
 
@@ -65,6 +66,7 @@ function toTeam(competitor: EspnCompetitor | undefined): BracketTeam {
     score: rawScore !== undefined && rawScore !== null && rawScore !== '' ? Number(rawScore) : null,
     winner: Boolean(competitor?.winner),
     teamId: real?.id ?? null,
+    pk: typeof competitor?.shootoutScore === 'number' ? competitor.shootoutScore : null,
   }
 }
 
@@ -202,15 +204,26 @@ export function knockoutScores(bracket: BracketRound[] | null): KnockoutScore[] 
       if (match.status !== 'post') continue
       const { home, away } = match
       if (!home.teamId || !away.teamId || home.score == null || away.score == null) continue
+      // 同点で終了=PK決着。勝者は winner フラグ優先、無ければPKスコアで判定。
       const draw = home.score === away.score
+      let homePenaltyWin = false
+      let awayPenaltyWin = false
+      if (draw) {
+        if (home.winner) homePenaltyWin = true
+        else if (away.winner) awayPenaltyWin = true
+        else if (home.pk != null && away.pk != null && home.pk !== away.pk) {
+          if (home.pk > away.pk) homePenaltyWin = true
+          else awayPenaltyWin = true
+        }
+      }
       out.push({
         homeTeamId: home.teamId,
         awayTeamId: away.teamId,
         kickoff: match.date,
         homeScore: home.score,
         awayScore: away.score,
-        homePenaltyWin: draw && Boolean(home.winner),
-        awayPenaltyWin: draw && Boolean(away.winner),
+        homePenaltyWin,
+        awayPenaltyWin,
       })
     }
   }
