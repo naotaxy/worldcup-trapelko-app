@@ -319,13 +319,22 @@ export function calculateTeamBreakdown(
     }
   }
 
-  // 決勝Tの試合(勝/PK/3点差)。予選とは別コンポーネントで内訳に表示。負けは0。
+  // 決勝Tの試合(勝/PK/3点差/カード/HT/OG)。予選とは別コンポーネントで内訳に明示。負けは0。
   let koWins = 0
   let koPkWins = 0
   let koMargin3 = 0
   let koWinPoints = 0
   let koPkWinPoints = 0
   let koMargin3Points = 0
+  let koHatTricks = 0
+  let koHatTrickPoints = 0
+  let koYellowCardsRaw = 0
+  let koYellowQuads = 0
+  let koYellowQuadPoints = 0
+  let koRedCards = 0
+  let koRedCardPoints = 0
+  let koOwnGoals = 0
+  let koOwnGoalPoints = 0
   for (const ko of knockoutMatchScores ?? []) {
     const isHome = ko.homeTeamId === team.id
     const isAway = ko.awayTeamId === team.id
@@ -347,22 +356,22 @@ export function calculateTeamBreakdown(
       koPkWins += 1
       koPkWinPoints += r.penaltyWin
     }
-    // 決勝T試合のイベント(HT/黄4/赤/OG)も予選と同じ計算で既存コンポーネントに合流。
+    // 決勝T試合のイベント(HT/黄4/赤/OG)は予選と同じ計算で「決勝T」別コンポーネントに集計。
     const koHt = isHome ? ko.homeHatTricks : ko.awayHatTricks
     const koSix = isHome ? ko.homeSixGoals : ko.awaySixGoals
-    hatTricks += koHt
-    hatTrickPoints += koHt * r.hatTrickBonus * (r.doubleHatTrickOnSix !== false && koSix > 0 ? 2 : 1)
+    koHatTricks += koHt
+    koHatTrickPoints += koHt * r.hatTrickBonus * (r.doubleHatTrickOnSix !== false && koSix > 0 ? 2 : 1)
     const koYc = isHome ? ko.homeYellowCards : ko.awayYellowCards
     const koQuads = Math.floor(Math.max(0, koYc) / 4)
-    yellowCards += koYc
-    yellowQuads += koQuads
-    yellowQuadPoints += koQuads * r.yellowCardsFourPenalty
+    koYellowCardsRaw += koYc
+    koYellowQuads += koQuads
+    koYellowQuadPoints += koQuads * r.yellowCardsFourPenalty
     const koRc = isHome ? ko.homeRedCards : ko.awayRedCards
-    redCards += koRc
-    redCardPoints += koRc * r.redCardPenalty * (r.doubleRedCardOnTwo !== false && koRc >= 2 ? 2 : 1)
+    koRedCards += koRc
+    koRedCardPoints += koRc * r.redCardPenalty * (r.doubleRedCardOnTwo !== false && koRc >= 2 ? 2 : 1)
     const koOg = isHome ? ko.homeOwnGoals : ko.awayOwnGoals
-    ownGoals += koOg
-    ownGoalPoints += koOg * r.ownGoalPenalty
+    koOwnGoals += koOg
+    koOwnGoalPoints += koOg * r.ownGoalPenalty
   }
 
   const components: TeamPointComponent[] = []
@@ -385,6 +394,10 @@ export function calculateTeamBreakdown(
   addPoints('koWin', '決勝T 勝ち', koWins, koWinPoints)
   addPoints('koPenaltyWin', '決勝T PK勝ち', koPkWins, koPkWinPoints)
   addPoints('koGoalMargin3', '決勝T 3点差勝ち', koMargin3, koMargin3Points)
+  addPoints('koHatTrick', '決勝T ハットトリック', koHatTricks, koHatTrickPoints)
+  addPoints('koYellowFour', '決勝T 黄カード4枚', koYellowQuads, koYellowQuadPoints)
+  addPoints('koRed', '決勝T レッドカード', koRedCards, koRedCardPoints)
+  addPoints('koOwnGoal', '決勝T オウンゴール', koOwnGoals, koOwnGoalPoints)
   const qualifiedForKnockout =
     knockoutQualifierIds && knockoutQualifierIds.size > 0
       ? knockoutQualifierIds.has(team.id)
@@ -411,7 +424,12 @@ export function calculateTeamBreakdown(
     total: roundPoint(total),
     components,
     standing,
-    tallies: { hatTricks, yellowCards, redCards, ownGoals },
+    tallies: {
+      hatTricks: hatTricks + koHatTricks,
+      yellowCards: yellowCards + koYellowCardsRaw,
+      redCards: redCards + koRedCards,
+      ownGoals: ownGoals + koOwnGoals,
+    },
   }
 }
 

@@ -4,7 +4,7 @@ import { playerInfoJa } from '../data/playerInfoJa'
 import type { PdfPlayer } from '../data/wcPdf'
 import { teamNamesJa, teams } from '../data/worldCup2026'
 import { flagUrl, type TeamBreakdown } from '../logic/score'
-import { formatDateShort, formatKickoff, useSettings } from '../lib/i18n'
+import { formatDateShort, formatKickoff, useSettings, useT } from '../lib/i18n'
 import type { Team } from '../types'
 import type { PlayerStat } from '../lib/api'
 
@@ -87,6 +87,7 @@ export function TeamDetailModal({
     .map((s) => ({ ...s, label: squadJaByNorm.get(normName(s.name || '')) || s.name || '?' }))
     .sort((a, b) => (b.goals || 0) - (a.goals || 0) || (b.red || 0) - (a.red || 0) || (b.yellow || 0) - (a.yellow || 0))
   const { lang, tz } = useSettings()
+  const t = useT()
   const { hatTricks, yellowCards, redCards, ownGoals } = breakdown.tallies
   const nextMatchOddsText = nextMatch
     ? [
@@ -152,7 +153,7 @@ export function TeamDetailModal({
           {nextMatchOddsText ? <span>{nextMatchOddsText}</span> : null}
         </div>
 
-        <div className="team-modal-tallies" aria-label="自動取得イベント実績">
+        <div className="team-modal-tallies" aria-label={t('自動取得イベント実績（予選・決勝T）')}>
           <span>ハットトリック {hatTricks}</span>
           <span>黄 {yellowCards}</span>
           <span className={redCards ? 'danger' : ''}>赤 {redCards}</span>
@@ -186,7 +187,7 @@ export function TeamDetailModal({
 
         {recorded.length > 0 ? (
           <section className="team-modal-record">
-            <h4>試合の記録（自動取得）</h4>
+            <h4>{t('試合の記録（予選・決勝T、自動取得）')}</h4>
             <ul className="team-record-list">
               {recorded.map((r) => (
                 <li key={r.name || r.label}>
