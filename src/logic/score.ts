@@ -116,10 +116,13 @@ export function calculateTeamStandings(
     const away = rows.get(ko.awayTeamId)
     if (!home || !away) return
     const koRules = rulesForKickoff(timeline, ko.kickoff)
-    const homePts = knockoutMatchPoints(ko.homeScore, ko.awayScore, ko.homePenaltyWin, ko.awayPenaltyWin, koRules).points
-    const awayPts = knockoutMatchPoints(ko.awayScore, ko.homeScore, ko.awayPenaltyWin, ko.homePenaltyWin, koRules).points
-    home.fantasyPoints = roundPoint(home.fantasyPoints + homePts)
-    away.fantasyPoints = roundPoint(away.fantasyPoints + awayPts)
+    home.fantasyPoints += knockoutMatchPoints(ko.homeScore, ko.awayScore, ko.homePenaltyWin, ko.awayPenaltyWin, koRules).points
+    away.fantasyPoints += knockoutMatchPoints(ko.awayScore, ko.homeScore, ko.awayPenaltyWin, ko.homePenaltyWin, koRules).points
+    // 予選と同じイベント点(HT/黄4/赤/OG)を決勝T試合にも適用。
+    applyEventPoints(home, ko.homeHatTricks, ko.homeYellowCards, ko.homeRedCards, ko.homeOwnGoals, ko.homeSixGoals, koRules)
+    applyEventPoints(away, ko.awayHatTricks, ko.awayYellowCards, ko.awayRedCards, ko.awayOwnGoals, ko.awaySixGoals, koRules)
+    home.fantasyPoints = roundPoint(home.fantasyPoints)
+    away.fantasyPoints = roundPoint(away.fantasyPoints)
   })
 
   return groups.flatMap((group) => {
@@ -344,6 +347,22 @@ export function calculateTeamBreakdown(
       koPkWins += 1
       koPkWinPoints += r.penaltyWin
     }
+    // 決勝T試合のイベント(HT/黄4/赤/OG)も予選と同じ計算で既存コンポーネントに合流。
+    const koHt = isHome ? ko.homeHatTricks : ko.awayHatTricks
+    const koSix = isHome ? ko.homeSixGoals : ko.awaySixGoals
+    hatTricks += koHt
+    hatTrickPoints += koHt * r.hatTrickBonus * (r.doubleHatTrickOnSix !== false && koSix > 0 ? 2 : 1)
+    const koYc = isHome ? ko.homeYellowCards : ko.awayYellowCards
+    const koQuads = Math.floor(Math.max(0, koYc) / 4)
+    yellowCards += koYc
+    yellowQuads += koQuads
+    yellowQuadPoints += koQuads * r.yellowCardsFourPenalty
+    const koRc = isHome ? ko.homeRedCards : ko.awayRedCards
+    redCards += koRc
+    redCardPoints += koRc * r.redCardPenalty * (r.doubleRedCardOnTwo !== false && koRc >= 2 ? 2 : 1)
+    const koOg = isHome ? ko.homeOwnGoals : ko.awayOwnGoals
+    ownGoals += koOg
+    ownGoalPoints += koOg * r.ownGoalPenalty
   }
 
   const components: TeamPointComponent[] = []

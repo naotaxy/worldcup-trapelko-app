@@ -20,7 +20,26 @@ const ROUND_JA: Record<string, string> = {
 }
 
 export type BracketTeam = { name: string; flag: string | null; score: number | null; winner: boolean; teamId: string | null; pk: number | null }
-export type BracketMatch = { id: string; date: string; status: string; home: BracketTeam; away: BracketTeam }
+export type KnockoutMatchEvents = {
+  homeYellowCards: number
+  awayYellowCards: number
+  homeRedCards: number
+  awayRedCards: number
+  homeOwnGoals: number
+  awayOwnGoals: number
+  homeHatTricks: number
+  awayHatTricks: number
+  homeSixGoals: number
+  awaySixGoals: number
+}
+export type BracketMatch = {
+  id: string
+  date: string
+  status: string
+  home: BracketTeam
+  away: BracketTeam
+  events?: KnockoutMatchEvents
+}
 export type BracketRound = { slug: string; label: string; matches: BracketMatch[] }
 
 const teamByAbbr = new Map(teams.map((t) => [t.shortName, t]))
@@ -178,6 +197,26 @@ export async function fetchTournament(force = false): Promise<Tournament> {
             label: ROUND_JA[s],
             matches: (byRound.get(s) || []).sort((a, b) => a.date.localeCompare(b.date)),
           }))
+
+    // 終了した決勝T試合はイベント詳細(黄/赤/OG/HT)をESPN summaryから取得して付与し、
+    // 予選と同じく1試合ごとに反映する。シュートアウトのPK(period>=5)はゴール集計から除外。
+    const finishedKnockout = (bracket ?? [])
+      .flatMap((round) => round.matches)
+      .filter((match) => match.status === 'post' && match.home.teamId && match.away.teamId)
+    await Promise.all(
+      finishedKnockout.map(async (match) => {
+        try {
+          const res = await fetch(`${ESPN}/summary?event=${match.id}`)
+          if (!res.ok) return
+          const summary = await res.json()
+          const events = parseKnockoutEvents(summary, match.home.teamId as string, match.away.teamId as string)
+          if (events) match.events = events
+        } catch {
+          // ignore a single summary failure
+        }
+      }),
+    )
+
     cache = { bracket, schedule, odds }
     return cache
   } catch {
@@ -185,8 +224,82 @@ export async function fetchTournament(force = false): Promise<Tournament> {
   }
 }
 
-// 決勝Tの「終了した試合」のスコア。予選と同じく1試合ごとに加点するための入力。
-// イベント(HT/カード/OG)は含まない(スコア=勝/PK/3点差のみ)。PKは同点かつ勝者ありで判定。
+type EspnSummaryEvent = {
+  type?: { text?: string }
+  team?: { id?: string | number }
+  participants?: { athlete?: { id?: string | number } }[]
+  period?: { number?: number }
+}
+type EspnSummaryCompetitor = { homeAway?: string; team?: { id?: string | number; abbreviation?: string } }
+type EspnSummary = {
+  header?: {
+    competitions?: {
+      status?: { type?: { completed?: boolean } }
+      competitors?: EspnSummaryCompetitor[]
+    }[]
+  }
+  keyEvents?: EspnSummaryEvent[]
+}
+
+// ESPN summary から決勝T1試合のイベント(黄/赤/OG/HT/6ゴール)を home/away 別に集計する。
+// サーバー parseEspnSummary(予選)と同仕様＋シュートアウト(period>=5)のゴールは除外。
+// OGは加点上「失点側(相手)」に計上(ESPNは受益側にゴールを付けるため)。
+function parseKnockoutEvents(summary: unknown, homeTeamId: string, awayTeamId: string): KnockoutMatchEvents | null {
+  const s = summary as EspnSummary
+  const comp = s?.header?.competitions?.[0]
+  if (!comp?.status?.type?.completed) return null
+  const competitors = comp.competitors || []
+  const sideByEspnId = new Map<string, 'home' | 'away'>()
+  for (const c of competitors) {
+    const ourId = teamByAbbr.get(c?.team?.abbreviation || '')?.id
+    if (ourId === homeTeamId) sideByEspnId.set(String(c?.team?.id), 'home')
+    else if (ourId === awayTeamId) sideByEspnId.set(String(c?.team?.id), 'away')
+  }
+  const tally = {
+    home: { goals: new Map<string, number>(), yellow: 0, red: 0, own: 0 },
+    away: { goals: new Map<string, number>(), yellow: 0, red: 0, own: 0 },
+  }
+  for (const ev of s?.keyEvents || []) {
+    const text = ev?.type?.text || ''
+    const side = sideByEspnId.get(String(ev?.team?.id))
+    if (!side) continue
+    if (/own goal/i.test(text)) {
+      const conceding = side === 'home' ? 'away' : 'home'
+      tally[conceding].own += 1
+      continue
+    }
+    const period = ev?.period?.number ?? 0
+    if ((/goal/i.test(text) || /penalty - scored/i.test(text)) && !/disallow|no goal|cancell?ed|var/i.test(text) && period < 5) {
+      const scorer = String(ev?.participants?.[0]?.athlete?.id ?? `anon-${Math.random()}`)
+      tally[side].goals.set(scorer, (tally[side].goals.get(scorer) || 0) + 1)
+      continue
+    }
+    if (/red card/i.test(text)) {
+      tally[side].red += 1
+      continue
+    }
+    if (/yellow card/i.test(text)) {
+      tally[side].yellow += 1
+    }
+  }
+  const ht = (g: Map<string, number>) => [...g.values()].filter((n) => n >= 3).length
+  const six = (g: Map<string, number>) => [...g.values()].filter((n) => n >= 6).length
+  return {
+    homeYellowCards: tally.home.yellow,
+    awayYellowCards: tally.away.yellow,
+    homeRedCards: tally.home.red,
+    awayRedCards: tally.away.red,
+    homeOwnGoals: tally.home.own,
+    awayOwnGoals: tally.away.own,
+    homeHatTricks: ht(tally.home.goals),
+    awayHatTricks: ht(tally.away.goals),
+    homeSixGoals: six(tally.home.goals),
+    awaySixGoals: six(tally.away.goals),
+  }
+}
+
+// 決勝Tの「終了した試合」のスコア＋イベント。予選と同じく1試合ごとに加点するための入力。
+// PKは同点かつ勝者(winner/PKスコア)で判定。イベントは match.events(summary由来)から。
 export type KnockoutScore = {
   homeTeamId: string
   awayTeamId: string
@@ -195,6 +308,16 @@ export type KnockoutScore = {
   awayScore: number
   homePenaltyWin: boolean
   awayPenaltyWin: boolean
+  homeYellowCards: number
+  awayYellowCards: number
+  homeRedCards: number
+  awayRedCards: number
+  homeOwnGoals: number
+  awayOwnGoals: number
+  homeHatTricks: number
+  awayHatTricks: number
+  homeSixGoals: number
+  awaySixGoals: number
 }
 
 export function knockoutScores(bracket: BracketRound[] | null): KnockoutScore[] {
@@ -216,6 +339,7 @@ export function knockoutScores(bracket: BracketRound[] | null): KnockoutScore[] 
           else awayPenaltyWin = true
         }
       }
+      const e = match.events
       out.push({
         homeTeamId: home.teamId,
         awayTeamId: away.teamId,
@@ -224,6 +348,16 @@ export function knockoutScores(bracket: BracketRound[] | null): KnockoutScore[] 
         awayScore: away.score,
         homePenaltyWin,
         awayPenaltyWin,
+        homeYellowCards: e?.homeYellowCards ?? 0,
+        awayYellowCards: e?.awayYellowCards ?? 0,
+        homeRedCards: e?.homeRedCards ?? 0,
+        awayRedCards: e?.awayRedCards ?? 0,
+        homeOwnGoals: e?.homeOwnGoals ?? 0,
+        awayOwnGoals: e?.awayOwnGoals ?? 0,
+        homeHatTricks: e?.homeHatTricks ?? 0,
+        awayHatTricks: e?.awayHatTricks ?? 0,
+        homeSixGoals: e?.homeSixGoals ?? 0,
+        awaySixGoals: e?.awaySixGoals ?? 0,
       })
     }
   }
