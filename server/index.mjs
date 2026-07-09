@@ -178,7 +178,7 @@ app.post('/api/announce-ranking', async (req, res) => {
 
 // Push an arbitrary text to the WC☆2026 group. Admin only (board passphrase).
 // Used for one-off announcements (e.g. an incident explanation from トラペル子).
-app.post('/api/announce', async (req, res) => {
+app.post('/api/announce', express.json(), async (req, res) => {
   if (!adminAuthorized(req)) {
     res.status(403).json({ ok: false, error: 'forbidden' })
     return
