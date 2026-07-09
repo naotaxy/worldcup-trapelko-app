@@ -198,7 +198,7 @@ app.post('/api/announce', express.json(), async (req, res) => {
     res.json({ ok: true, pushedTo: target })
   } catch (error) {
     console.error('[announce]', error)
-    res.status(500).json({ ok: false, error: 'push failed' })
+    res.status(500).json({ ok: false, error: String(error?.message || 'push failed') })
   }
 })
 
