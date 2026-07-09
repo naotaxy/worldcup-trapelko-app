@@ -176,6 +176,32 @@ app.post('/api/announce-ranking', async (req, res) => {
   res.json({ ok: true, pushedTo: target, text })
 })
 
+// Push an arbitrary text to the WC☆2026 group. Admin only (board passphrase).
+// Used for one-off announcements (e.g. an incident explanation from トラペル子).
+app.post('/api/announce', async (req, res) => {
+  if (!adminAuthorized(req)) {
+    res.status(403).json({ ok: false, error: 'forbidden' })
+    return
+  }
+  const text = typeof req.body?.text === 'string' ? req.body.text.trim() : ''
+  if (!text) {
+    res.status(400).json({ ok: false, error: 'text required' })
+    return
+  }
+  const target = lineNotificationTarget()
+  if (!target) {
+    res.status(400).json({ ok: false, error: 'no WC group configured' })
+    return
+  }
+  try {
+    await pushLine(target, [{ type: 'text', text }])
+    res.json({ ok: true, pushedTo: target })
+  } catch (error) {
+    console.error('[announce]', error)
+    res.status(500).json({ ok: false, error: 'push failed' })
+  }
+})
+
 function syncAuthorized(req) {
   const key = process.env.SYNC_KEY
   return !key || req.query.key === key
