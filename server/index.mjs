@@ -1950,6 +1950,13 @@ async function computeStandingsFromDb() {
   // the real kickoff schedule and odds, exactly like the live board. Without
   // these the LINE ranking diverges from the app once the knockout begins.
   const tournament = await getTournamentCached()
+  // 予選終了後(決勝T中)にブラケットが取れていないと、決勝Tの勝ち点/カード/進出ボーナスが
+  // すべて抜けた「予選のみ」の誤った順位になる(例: デプロイ直後のコールドスタートやESPN失敗)。
+  // 誤った順位をLINEに配信/返信しないよう null を返す(呼び出し側は集計中フォールバック)。
+  // 起動時 runAutoSync とポーラーがブラケットを温めるので、この状態は一時的。
+  const groupStageComplete = fixtures.every((f) => f.result.home != null && f.result.away != null)
+  const bracketReady = Boolean(tournament?.bracket && tournament.bracket.length > 0)
+  if (groupStageComplete && !bracketReady) return null
   const qualifierIds = bracketMod.knockoutTeamIds(tournament.bracket)
   const teamStandings = logic.calculateTeamStandings(
     data.groups,
