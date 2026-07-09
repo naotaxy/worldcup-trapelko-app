@@ -264,7 +264,10 @@ export function BoardView({
       <section className="panel leaderboard-panel" id={sectionId('member-ranking')}>
         <PanelTitle icon={<Medal size={18} />} title={t('参加者ランキング')} note={t('総合ポイント')} />
         <div className="leader-list">
-          {memberStandings.map((row) => (
+          {groupStageComplete && qualifierIds.size === 0 ? (
+            <p className="match-desk-note">{t('順位を集計中…（決勝トーナメントのデータ取得待ち）')}</p>
+          ) : (
+            memberStandings.map((row) => (
             <article key={row.member.id} className="leader-row">
               <div className="member-avatar" style={{ '--avatar-color': row.member.accent } as CSSProperties}>
                 {row.member.avatar}
@@ -300,7 +303,8 @@ export function BoardView({
               </div>
               <strong>{row.total}</strong>
             </article>
-          ))}
+            ))
+          )}
         </div>
       </section>
 
