@@ -1752,11 +1752,12 @@ async function notifyPendingResults() {
   const target = lineNotificationTarget()
   if (!target) return 0
   const sinceIso = new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString()
-  const [resultsRes, notifsRes, selRes, dataMod] = await Promise.all([
+  const [resultsRes, notifsRes, selRes, dataMod, tournament] = await Promise.all([
     supabase.from('match_results').select('*').gte('updated_at', sinceIso),
     supabase.from('notifications').select('payload').eq('event_type', 'result'),
     supabase.from('selections').select('team_id'),
     import('../src/data/worldCup2026.ts'),
+    getTournamentCached().catch(() => ({ schedule: {} })),
   ])
   const done = new Set((notifsRes.data || []).map((n) => `${n.payload?.matchId}|${n.payload?.score}`))
   // Only notify matches that involve an owned country (saves LINE quota). If no
@@ -1768,11 +1769,23 @@ async function notifyPendingResults() {
     const fx = fixtureById.get(matchId)
     return fx ? owned.has(fx.homeTeamId) || owned.has(fx.awayTeamId) : true
   }
+  // A result is only "breaking news" within ~12h of its real kickoff. Group-stage
+  // matches are all weeks old, so without this a late updated_at bump (a full
+  // re-sync, ESPN data drift) would re-broadcast every old group result — which is
+  // exactly the 2026-07-10 mass mis-report. Fail closed when the kickoff is unknown.
+  const schedule = tournament?.schedule || {}
+  const RECENT_RESULT_MS = 12 * 60 * 60 * 1000
+  const kickedOffRecently = (matchId) => {
+    const iso = schedule[matchId] || fixtureById.get(matchId)?.date
+    const t = iso ? new Date(iso).getTime() : NaN
+    return !Number.isNaN(t) && Date.now() - t <= RECENT_RESULT_MS
+  }
   const fresh = (resultsRes.data || []).filter(
     (r) =>
       r.home_score != null &&
       r.away_score != null &&
       !done.has(`${r.match_id}|${r.home_score}-${r.away_score}`) &&
+      kickedOffRecently(r.match_id) &&
       involvesOwned(r.match_id),
   )
   let notified = 0
