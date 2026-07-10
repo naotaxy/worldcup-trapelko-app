@@ -16,6 +16,15 @@ const wcGroupName = process.env.LINE_WC_GROUP_NAME || 'WC☆2026'
 const wcGroupId = process.env.LINE_WC_GROUP_ID || ''
 const knownWcGroupIds = new Set(wcGroupId ? [wcGroupId] : [])
 
+function setHtmlNoStoreHeaders(res) {
+  res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('Pragma', 'no-cache')
+}
+
+function setStateNoStoreHeaders(res) {
+  res.setHeader('Cache-Control', 'no-store')
+}
+
 const footballDataToken = process.env.FOOTBALL_DATA_TOKEN || ''
 // football-data.org TLA -> our team id. 47/48 match shortName directly; only
 // Uruguay differs (URY vs our URU).
@@ -1229,6 +1238,7 @@ app.post('/api/rescue', async (req, res) => {
 // Shared mutable board state. Returns source:"supabase" only when a backend is
 // actually wired up, so the frontend knows whether to trust it over local/seed.
 app.get('/api/state', async (_req, res) => {
+  setStateNoStoreHeaders(res)
   if (!supabase) {
     res.json({ source: 'static' })
     return
@@ -1340,8 +1350,13 @@ app.post('/api/results', async (req, res) => {
 })
 
 if (fs.existsSync(distDir)) {
-  app.use(express.static(distDir))
+  app.use(express.static(distDir, {
+    setHeaders(res, servedPath) {
+      if (servedPath.endsWith('.html')) setHtmlNoStoreHeaders(res)
+    },
+  }))
   app.get(/.*/, (_req, res) => {
+    setHtmlNoStoreHeaders(res)
     res.sendFile(path.join(distDir, 'index.html'))
   })
 }

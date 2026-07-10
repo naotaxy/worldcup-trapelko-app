@@ -54,6 +54,7 @@ import {
   type PlayerStat,
   type ServerState,
 } from './lib/api'
+import { isNewBundleAvailable } from './lib/appVersion'
 import { fetchTournament, knockoutScores, knockoutTeamIds, type BracketRound, type KnockoutScore } from './lib/bracket'
 import { loadLocalState, saveLocalState } from './lib/persistence'
 import { buildRulesTimeline, currentRulesOf, neutralPublicRules, normalizeTimeline, type RulesUpdateMode } from './lib/publicRules'
@@ -77,8 +78,33 @@ function initialLocalState() {
   return cachedLocalState
 }
 
+async function forceCacheBustReload() {
+  try {
+    if ('serviceWorker' in navigator) {
+      const registrations = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(registrations.map((registration) => registration.unregister()))
+    }
+  } catch {
+    // Continue to cache cleanup and the cache-busted reload.
+  }
+
+  try {
+    if ('caches' in window) {
+      const cacheNames = await window.caches.keys()
+      await Promise.all(cacheNames.map((cacheName) => window.caches.delete(cacheName)))
+    }
+  } catch {
+    // Continue to the cache-busted reload.
+  }
+
+  const url = new URL(window.location.href)
+  url.searchParams.set('r', String(Date.now()))
+  window.location.replace(url.toString())
+}
+
 function App() {
   const slotTimerRef = useRef<number | null>(null)
+  const autoReloadTriggeredRef = useRef(false)
   // Insider board gate. The bundle ships placeholder member names; real names are
   // fetched from Supabase only after the passphrase is entered. `demoMembers`
   // below overlays the real names so the rest of the component is unchanged.
@@ -238,6 +264,21 @@ function App() {
 
   useEffect(() => {
     return () => clearSlotTimer(slotTimerRef)
+  }, [])
+
+  useEffect(() => {
+    const checkForNewBundle = async () => {
+      if (autoReloadTriggeredRef.current) return
+      const shouldReload = await isNewBundleAvailable()
+      if (!shouldReload || autoReloadTriggeredRef.current) return
+      autoReloadTriggeredRef.current = true
+      await forceCacheBustReload()
+    }
+
+    const id = window.setInterval(() => {
+      void checkForNewBundle()
+    }, 90000)
+    return () => window.clearInterval(id)
   }, [])
 
   // Real kickoff times (JST) for every fixture, from ESPN (free, CORS).
@@ -455,29 +496,7 @@ function App() {
   const slotCountries = useMemo(() => rescueTeams.map(slotCountryFromTeam), [rescueTeams])
   const slotResultCountry = slotResultTeam ? slotCountryFromTeam(slotResultTeam) : null
 
-  const handleForceReload = async () => {
-    try {
-      if ('serviceWorker' in navigator) {
-        const registrations = await navigator.serviceWorker.getRegistrations()
-        await Promise.all(registrations.map((registration) => registration.unregister()))
-      }
-    } catch {
-      // Continue to cache cleanup and the cache-busted reload.
-    }
-
-    try {
-      if ('caches' in window) {
-        const cacheNames = await window.caches.keys()
-        await Promise.all(cacheNames.map((cacheName) => window.caches.delete(cacheName)))
-      }
-    } catch {
-      // Continue to the cache-busted reload.
-    }
-
-    const url = new URL(window.location.href)
-    url.searchParams.set('r', String(Date.now()))
-    window.location.replace(url.toString())
-  }
+  const handleForceReload = forceCacheBustReload
 
   const applyPreview = () => {
     setLiveFixtures((current) =>
@@ -763,6 +782,7 @@ function App() {
             liveFixtures={liveFixtures}
             groups={groups}
             qualifierIds={qualifierIds}
+            knockoutDataReady={serverQualifierIds !== null}
             odds={odds}
             oddsProbs={oddsProbs}
             schedule={schedule}
@@ -1048,6 +1068,7 @@ function App() {
           liveFixtures={liveFixtures}
           groups={groups}
           qualifierIds={qualifierIds}
+          knockoutDataReady={serverQualifierIds !== null}
           odds={odds}
           oddsProbs={oddsProbs}
           schedule={schedule}

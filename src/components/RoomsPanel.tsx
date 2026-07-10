@@ -33,6 +33,7 @@ type RoomsPanelProps = {
   liveFixtures: Match[]
   groups: Group[]
   qualifierIds: Set<string>
+  knockoutDataReady: boolean
   odds: Record<string, Record<string, number>>
   oddsProbs: Record<string, MatchProb>
   schedule: Record<string, string>
@@ -49,6 +50,7 @@ export function RoomsPanel({
   liveFixtures,
   groups: boardGroups,
   qualifierIds,
+  knockoutDataReady,
   odds,
   oddsProbs,
   schedule,
@@ -219,6 +221,7 @@ export function RoomsPanel({
           liveFixtures={liveFixtures}
           groups={boardGroups}
           qualifierIds={qualifierIds}
+          knockoutDataReady={knockoutDataReady}
           odds={odds}
           oddsProbs={oddsProbs}
           schedule={schedule}
@@ -519,6 +522,7 @@ function RoomReveal({
   liveFixtures,
   groups,
   qualifierIds,
+  knockoutDataReady,
   odds,
   oddsProbs,
   schedule,
@@ -536,6 +540,7 @@ function RoomReveal({
   liveFixtures: Match[]
   groups: Group[]
   qualifierIds: Set<string>
+  knockoutDataReady: boolean
   odds: Record<string, Record<string, number>>
   oddsProbs: Record<string, MatchProb>
   schedule: Record<string, string>
@@ -628,6 +633,7 @@ function RoomReveal({
         liveFixtures={liveFixtures}
         groups={groups}
         qualifierIds={qualifierIds}
+        knockoutDataReady={knockoutDataReady}
         odds={odds}
         oddsProbs={oddsProbs}
         schedule={schedule}
