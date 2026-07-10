@@ -455,6 +455,30 @@ function App() {
   const slotCountries = useMemo(() => rescueTeams.map(slotCountryFromTeam), [rescueTeams])
   const slotResultCountry = slotResultTeam ? slotCountryFromTeam(slotResultTeam) : null
 
+  const handleForceReload = async () => {
+    try {
+      if ('serviceWorker' in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations()
+        await Promise.all(registrations.map((registration) => registration.unregister()))
+      }
+    } catch {
+      // Continue to cache cleanup and the cache-busted reload.
+    }
+
+    try {
+      if ('caches' in window) {
+        const cacheNames = await window.caches.keys()
+        await Promise.all(cacheNames.map((cacheName) => window.caches.delete(cacheName)))
+      }
+    } catch {
+      // Continue to the cache-busted reload.
+    }
+
+    const url = new URL(window.location.href)
+    url.searchParams.set('r', String(Date.now()))
+    window.location.replace(url.toString())
+  }
+
   const applyPreview = () => {
     setLiveFixtures((current) =>
       current.map((match) => {
@@ -679,6 +703,10 @@ function App() {
       <SettingsBar />
 
       <nav className="mobile-section-tabs" aria-label="sections">
+        <button type="button" className="force-reload-button" onClick={handleForceReload} aria-label="キャッシュを消して最新に更新">
+          <RotateCcw size={15} />
+          最新に更新
+        </button>
         <a href="#rooms">
           <Users size={15} />
           {t('ルーム')}

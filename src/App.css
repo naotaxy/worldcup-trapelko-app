@@ -183,6 +183,7 @@
 }
 
 .mobile-section-tabs a,
+.mobile-section-tabs .force-reload-button,
 .mobile-section-tabs .tab-login,
 .mobile-section-tabs .line-profile-chip {
   display: inline-flex;
@@ -203,7 +204,14 @@
   cursor: pointer;
 }
 
+.mobile-section-tabs .force-reload-button {
+  border-color: rgba(216, 199, 131, 0.66);
+  background: rgba(216, 199, 131, 0.18);
+  color: #fbf7e8;
+}
+
 .mobile-section-tabs a:hover,
+.mobile-section-tabs .force-reload-button:hover,
 .mobile-section-tabs .tab-login:hover {
   border-color: rgba(216, 199, 131, 0.78);
 }
@@ -2559,6 +2567,7 @@ input {
   }
 
   .mobile-section-tabs a,
+  .mobile-section-tabs .force-reload-button,
   .mobile-section-tabs .tab-login,
   .mobile-section-tabs .line-profile-chip {
     display: flex;
@@ -2575,6 +2584,10 @@ input {
     font-weight: 800;
     text-decoration: none;
     scroll-snap-align: start;
+  }
+
+  .mobile-section-tabs .force-reload-button {
+    min-height: 40px;
   }
 
   .hero-band,
