@@ -36,6 +36,7 @@ export type BoardViewProps = {
   liveFixtures: Match[]
   groups: Group[]
   qualifierIds: Set<string>
+  knockoutDataReady?: boolean
   odds: Record<string, Record<string, number>>
   oddsProbs: Record<string, MatchProb>
   schedule: Record<string, string>
@@ -60,6 +61,7 @@ export function BoardView({
   liveFixtures,
   groups,
   qualifierIds,
+  knockoutDataReady = true,
   odds,
   oddsProbs,
   schedule,
@@ -264,7 +266,7 @@ export function BoardView({
       <section className="panel leaderboard-panel" id={sectionId('member-ranking')}>
         <PanelTitle icon={<Medal size={18} />} title={t('参加者ランキング')} note={t('総合ポイント')} />
         <div className="leader-list">
-          {groupStageComplete && qualifierIds.size === 0 ? (
+          {groupStageComplete && (!knockoutDataReady || qualifierIds.size === 0) ? (
             <p className="match-desk-note">{t('順位を集計中…（決勝トーナメントのデータ取得待ち）')}</p>
           ) : (
             memberStandings.map((row) => (
