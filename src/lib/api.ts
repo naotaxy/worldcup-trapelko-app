@@ -55,7 +55,13 @@ export type AnalyticsSummary = {
 
 async function getJson<T>(path: string): Promise<T | null> {
   try {
-    const res = await fetch(path, { headers: { accept: 'application/json' } })
+    // Always hit the network fresh. Mobile webviews (esp. the LINE in-app
+    // browser) otherwise serve a stale HTTP-cached /api/state that predates the
+    // authoritative qualifierIds/knockoutScores, which makes the app compute a
+    // wrong low ranking from its own incomplete client-side bracket. A
+    // cache-busting query plus cache:'no-store' defeats every cache layer.
+    const bust = `${path.includes('?') ? '&' : '?'}_=${Date.now()}`
+    const res = await fetch(path + bust, { headers: { accept: 'application/json' }, cache: 'no-store' })
     if (!res.ok) return null
     const contentType = res.headers.get('content-type') || ''
     if (!contentType.includes('application/json')) return null
