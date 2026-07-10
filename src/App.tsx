@@ -54,7 +54,7 @@ import {
   type PlayerStat,
   type ServerState,
 } from './lib/api'
-import { isNewBundleAvailable } from './lib/appVersion'
+import { isNewBundleAvailable, RUNNING_BUNDLE } from './lib/appVersion'
 import { fetchTournament, knockoutScores, knockoutTeamIds, type BracketRound, type KnockoutScore } from './lib/bracket'
 import { loadLocalState, saveLocalState } from './lib/persistence'
 import { buildRulesTimeline, currentRulesOf, neutralPublicRules, normalizeTimeline, type RulesUpdateMode } from './lib/publicRules'
@@ -720,6 +720,15 @@ function App() {
       </div>
 
       <SettingsBar />
+
+      <p
+        className="build-diag"
+        style={{ fontSize: 10, opacity: 0.55, textAlign: 'center', margin: '2px 0', letterSpacing: 0.2 }}
+      >
+        v:{(RUNNING_BUNDLE || 'dev').replace('index-', '').replace('.js', '').slice(0, 8)} · srvQ:
+        {serverQualifierIds ? serverQualifierIds.size : 'null'} · cliQ:{clientQualifierIds.size} · ko:
+        {knockoutScoreList.length}
+      </p>
 
       <nav className="mobile-section-tabs" aria-label="sections">
         <button type="button" className="force-reload-button" onClick={handleForceReload} aria-label="キャッシュを消して最新に更新">
