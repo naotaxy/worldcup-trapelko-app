@@ -97,6 +97,17 @@ async function forceCacheBustReload() {
     // Continue to the cache-busted reload.
   }
 
+  try {
+    // Drop the cached board snapshot so the reload rebuilds from the
+    // Supabase-authoritative state. A stale local snapshot (old/partial match
+    // results) otherwise pollutes the ranking even after cache + bundle refresh.
+    // Keep the passphrase (wc-board-key) and visitor id so the user stays
+    // unlocked.
+    window.localStorage.removeItem('wc2026-board-state-v1')
+  } catch {
+    // Continue to the cache-busted reload.
+  }
+
   const url = new URL(window.location.href)
   url.searchParams.set('r', String(Date.now()))
   window.location.replace(url.toString())
@@ -317,7 +328,12 @@ function App() {
         if (shared.rescues) {
           setRescueBaselines(new Map(shared.rescues.map((pick) => [`${pick.memberId}:${pick.teamId}`, pick.baseline])))
         }
-        if (shared.results) setLiveFixtures((current) => applyResultMap(current, shared.results!))
+        // Rebuild from the pristine fixtures base (NOT the localStorage-seeded
+        // current) so the Supabase-authoritative results fully replace any stale
+        // or manually-entered local results. Merging onto `current` let old
+        // localStorage fields (e.g. extra card penalties) survive and drag the
+        // ranking down even when the server data was complete.
+        if (shared.results) setLiveFixtures(applyResultMap(fixtures, shared.results))
         if (shared.playerStats) setPlayerStats(shared.playerStats)
       }
     })()
@@ -334,7 +350,12 @@ function App() {
         const shared = await fetchSharedState()
         if (!shared) return
         applySharedKnockoutState(shared)
-        if (shared.results) setLiveFixtures((current) => applyResultMap(current, shared.results!))
+        // Rebuild from the pristine fixtures base (NOT the localStorage-seeded
+        // current) so the Supabase-authoritative results fully replace any stale
+        // or manually-entered local results. Merging onto `current` let old
+        // localStorage fields (e.g. extra card penalties) survive and drag the
+        // ranking down even when the server data was complete.
+        if (shared.results) setLiveFixtures(applyResultMap(fixtures, shared.results))
         if (shared.playerStats) setPlayerStats(shared.playerStats)
       })()
     }, 150000)
