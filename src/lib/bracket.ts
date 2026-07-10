@@ -145,7 +145,7 @@ export async function fetchTournament(force = false): Promise<Tournament> {
     await Promise.all(
       dates.map(async (dt) => {
         try {
-          const res = await fetch(`${ESPN}/scoreboard?dates=${dt}`)
+          const res = await fetch(`${ESPN}/scoreboard?dates=${dt}`, { signal: AbortSignal.timeout(8000) })
           if (!res.ok) return
           const data = await res.json()
           for (const ev of data.events || []) {
@@ -203,19 +203,20 @@ export async function fetchTournament(force = false): Promise<Tournament> {
     const finishedKnockout = (bracket ?? [])
       .flatMap((round) => round.matches)
       .filter((match) => match.status === 'post' && match.home.teamId && match.away.teamId)
-    await Promise.all(
-      finishedKnockout.map(async (match) => {
-        try {
-          const res = await fetch(`${ESPN}/summary?event=${match.id}`)
-          if (!res.ok) return
-          const summary = await res.json()
-          const events = parseKnockoutEvents(summary, match.home.teamId as string, match.away.teamId as string)
-          if (events) match.events = events
-        } catch {
-          // ignore a single summary failure
-        }
-      }),
-    )
+    const eventFetches = finishedKnockout.map(async (match) => {
+      try {
+        const res = await fetch(`${ESPN}/summary?event=${match.id}`, { signal: AbortSignal.timeout(8000) })
+        if (!res.ok) return
+        const summary = await res.json()
+        const events = parseKnockoutEvents(summary, match.home.teamId as string, match.away.teamId as string)
+        if (events) match.events = events
+      } catch {
+        // ignore a single summary failure/timeout
+      }
+    })
+    // ブラウザで summary が1件でもハングするとブラケット全体が読めず、順位が初期の
+    // 不完全値のまま止まる。個別タイムアウト＋全体上限(12秒)で必ず前に進める。
+    await Promise.race([Promise.all(eventFetches), new Promise((resolve) => setTimeout(resolve, 12000))])
 
     cache = { bracket, schedule, odds }
     return cache
