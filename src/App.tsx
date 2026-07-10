@@ -223,8 +223,17 @@ function App() {
   const qualifierIds = serverQualifierIds ?? clientQualifierIds
 
   const applySharedKnockoutState = useCallback((shared: ServerState) => {
-    setServerQualifierIds(Array.isArray(shared.qualifierIds) ? new Set(shared.qualifierIds) : null)
-    setServerKnockoutScores(Array.isArray(shared.knockoutScores) ? shared.knockoutScores : null)
+    // Only adopt the authoritative knockout data when the server actually sends
+    // it. A momentarily-cold /api/state (bracket not warmed yet) omits these
+    // fields; in that case keep the last good values instead of reverting to the
+    // incomplete client-side bracket (which would drop the app back to a wrong,
+    // lower ranking).
+    if (Array.isArray(shared.qualifierIds) && shared.qualifierIds.length > 0) {
+      setServerQualifierIds(new Set(shared.qualifierIds))
+    }
+    if (Array.isArray(shared.knockoutScores) && shared.knockoutScores.length > 0) {
+      setServerKnockoutScores(shared.knockoutScores)
+    }
   }, [])
 
   useEffect(() => {
