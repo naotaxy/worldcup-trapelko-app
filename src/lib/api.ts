@@ -1,5 +1,6 @@
 import type { AwardSettings, MatchResult, Rules, TeamSelection } from '../types'
 import type { RulesTimeline } from '../logic/score'
+import type { KnockoutScore } from './bracket'
 import type { RulesUpdateMode } from './publicRules'
 
 // Thin, defensive client for the optional backend API.
@@ -24,6 +25,8 @@ export type ServerState = {
   rescues?: { memberId: string; teamId: string; baseline: number }[]
   results?: Record<string, MatchResult>
   playerStats?: Record<string, PlayerStat>
+  qualifierIds?: string[]
+  knockoutScores?: KnockoutScore[]
 }
 
 export type Bootstrap = {

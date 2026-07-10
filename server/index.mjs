@@ -1235,11 +1235,25 @@ app.get('/api/state', async (_req, res) => {
   }
 
   try {
-    const [rulesetRes, selectionsRes, rescuePicks, resultsRes] = await Promise.all([
+    const knockoutStatePromise = Promise.all([import('../src/lib/bracket.ts'), getTournamentCached()])
+      .then(([bracketMod, tournament]) => {
+        if (!tournament?.bracket || tournament.bracket.length === 0) return undefined
+        return {
+          qualifierIds: [...bracketMod.knockoutTeamIds(tournament.bracket)],
+          knockoutScores: bracketMod.knockoutScores(tournament.bracket),
+        }
+      })
+      .catch((error) => {
+        console.error('[server] /api/state knockout', error?.message)
+        return undefined
+      })
+
+    const [rulesetRes, selectionsRes, rescuePicks, resultsRes, knockoutState] = await Promise.all([
       supabase.from('rulesets').select('*').eq('id', 'default').maybeSingle(),
       supabase.from('selections').select('team_id, owner_slot, members(member_key)'),
       fetchRescuePicks(),
       supabase.from('match_results').select('*'),
+      knockoutStatePromise,
     ])
 
     const selections = [
@@ -1272,6 +1286,7 @@ app.get('/api/state', async (_req, res) => {
       rescues: rescuePicks,
       results,
       playerStats: playerStatsCache,
+      ...(knockoutState || {}),
     })
   } catch (error) {
     console.error('[server] /api/state', error)

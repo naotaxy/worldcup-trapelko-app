@@ -52,8 +52,9 @@ import {
   unlockBoard,
   type AnalyticsSummary,
   type PlayerStat,
+  type ServerState,
 } from './lib/api'
-import { fetchTournament, knockoutScores, knockoutTeamIds, type BracketRound } from './lib/bracket'
+import { fetchTournament, knockoutScores, knockoutTeamIds, type BracketRound, type KnockoutScore } from './lib/bracket'
 import { loadLocalState, saveLocalState } from './lib/persistence'
 import { buildRulesTimeline, currentRulesOf, neutralPublicRules, normalizeTimeline, type RulesUpdateMode } from './lib/publicRules'
 
@@ -214,9 +215,17 @@ function App() {
   const [playerStats, setPlayerStats] = useState<Record<string, PlayerStat>>({})
   const [schedule, setSchedule] = useState<Record<string, string>>({})
   const [odds, setOdds] = useState<Record<string, Record<string, number>>>({})
-  const [qualifierIds, setQualifierIds] = useState<Set<string>>(() => new Set())
+  const [clientQualifierIds, setClientQualifierIds] = useState<Set<string>>(() => new Set())
+  const [serverQualifierIds, setServerQualifierIds] = useState<Set<string> | null>(null)
+  const [serverKnockoutScores, setServerKnockoutScores] = useState<KnockoutScore[] | null>(null)
   const [bracket, setBracket] = useState<BracketRound[] | null>(null)
   const [bracketLoaded, setBracketLoaded] = useState(false)
+  const qualifierIds = serverQualifierIds ?? clientQualifierIds
+
+  const applySharedKnockoutState = useCallback((shared: ServerState) => {
+    setServerQualifierIds(Array.isArray(shared.qualifierIds) ? new Set(shared.qualifierIds) : null)
+    setServerKnockoutScores(Array.isArray(shared.knockoutScores) ? shared.knockoutScores : null)
+  }, [])
 
   useEffect(() => {
     return () => clearSlotTimer(slotTimerRef)
@@ -229,7 +238,7 @@ function App() {
       if (cancelled) return
       if (t.schedule) setSchedule(t.schedule)
       if (t.odds) setOdds(t.odds)
-      setQualifierIds(knockoutTeamIds(t.bracket))
+      setClientQualifierIds(knockoutTeamIds(t.bracket))
       setBracket(t.bracket)
       setBracketLoaded(true)
     })
@@ -247,6 +256,7 @@ function App() {
       const shared = await fetchSharedState()
       if (cancelled) return
       if (shared) {
+        applySharedKnockoutState(shared)
         if (shared.rules || shared.rulesTimeline) {
           const tl = normalizeTimeline(shared.rulesTimeline, shared.rules ?? defaultRules)
           setRulesTimeline(tl)
@@ -264,7 +274,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [applySharedKnockoutState])
 
   // Keep the open page live: refresh shared results + player stats every ~2.5min
   // (our own server, cheap). Editable state (rules/awards/draft) is left alone.
@@ -273,12 +283,13 @@ function App() {
       void (async () => {
         const shared = await fetchSharedState()
         if (!shared) return
+        applySharedKnockoutState(shared)
         if (shared.results) setLiveFixtures((current) => applyResultMap(current, shared.results!))
         if (shared.playerStats) setPlayerStats(shared.playerStats)
       })()
     }, 150000)
     return () => window.clearInterval(id)
-  }, [])
+  }, [applySharedKnockoutState])
 
   // Refresh the ESPN tournament (schedule/odds/qualifiers/bracket) every ~6min so
   // the bracket fills and the group->knockout switch happens without a reload.
@@ -290,7 +301,7 @@ function App() {
         if (Object.keys(t.odds).length > 0) setOdds(t.odds)
         if (t.bracket) {
           setBracket(t.bracket)
-          setQualifierIds(knockoutTeamIds(t.bracket))
+          setClientQualifierIds(knockoutTeamIds(t.bracket))
         }
       })()
     }, 360000)
@@ -303,7 +314,7 @@ function App() {
     saveLocalState({ rules, rulesTimeline, awards, selections: draftSelections, results: extractResultMap(liveFixtures) })
   }, [rules, rulesTimeline, awards, draftSelections, liveFixtures])
 
-  const knockoutScoreList = useMemo(() => knockoutScores(bracket), [bracket])
+  const knockoutScoreList = useMemo(() => serverKnockoutScores ?? knockoutScores(bracket), [serverKnockoutScores, bracket])
   const teamStandings = useMemo(
     () => calculateTeamStandings(groups, liveFixtures, rulesTimeline, awards, qualifierIds, odds, schedule, knockoutScoreList),
     [awards, liveFixtures, rulesTimeline, qualifierIds, odds, schedule, knockoutScoreList],
@@ -721,6 +732,7 @@ function App() {
             playerStats={playerStats}
             bracket={bracket}
             bracketLoaded={bracketLoaded}
+            knockoutScoreList={knockoutScoreList}
             projectionMode={projectionMode}
             onProjectionMode={setProjectionMode}
           />
@@ -1005,6 +1017,7 @@ function App() {
           playerStats={playerStats}
           bracket={bracket}
           bracketLoaded={bracketLoaded}
+          knockoutScoreList={knockoutScoreList}
           projectionMode={projectionMode}
           onProjectionMode={setProjectionMode}
           activeGroup={activeGroup}

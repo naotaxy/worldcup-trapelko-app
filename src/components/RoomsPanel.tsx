@@ -5,8 +5,7 @@ import { calculateTeamStandings, flagUrl } from '../logic/score'
 import type { MatchProb, ProjectionMode } from '../logic/projection'
 import type { AwardSettings, Group, Match, Member, Rules, TeamSelection } from '../types'
 import type { PlayerStat } from '../lib/api'
-import type { BracketRound } from '../lib/bracket'
-import { knockoutScores } from '../lib/bracket'
+import type { BracketRound, KnockoutScore } from '../lib/bracket'
 import { buildRulesTimeline, currentRulesOf, normalizeRules, normalizeTimeline, type RulesUpdateMode } from '../lib/publicRules'
 import { useT } from '../lib/i18n'
 import { BoardView } from './BoardView'
@@ -40,6 +39,7 @@ type RoomsPanelProps = {
   playerStats: Record<string, PlayerStat>
   bracket: BracketRound[] | null
   bracketLoaded: boolean
+  knockoutScoreList: KnockoutScore[]
   projectionMode: ProjectionMode
   onProjectionMode: (mode: ProjectionMode) => void
 }
@@ -55,6 +55,7 @@ export function RoomsPanel({
   playerStats,
   bracket,
   bracketLoaded,
+  knockoutScoreList,
   projectionMode,
   onProjectionMode,
 }: RoomsPanelProps) {
@@ -224,6 +225,7 @@ export function RoomsPanel({
           playerStats={playerStats}
           bracket={bracket}
           bracketLoaded={bracketLoaded}
+          knockoutScoreList={knockoutScoreList}
           projectionMode={projectionMode}
           onProjectionMode={onProjectionMode}
         />
@@ -523,6 +525,7 @@ function RoomReveal({
   playerStats,
   bracket,
   bracketLoaded,
+  knockoutScoreList,
   projectionMode,
   onProjectionMode,
 }: {
@@ -539,6 +542,7 @@ function RoomReveal({
   playerStats: Record<string, PlayerStat>
   bracket: BracketRound[] | null
   bracketLoaded: boolean
+  knockoutScoreList: KnockoutScore[]
   projectionMode: ProjectionMode
   onProjectionMode: (mode: ProjectionMode) => void
 }) {
@@ -551,7 +555,6 @@ function RoomReveal({
     [room.rulesTimeline, room.rules],
   )
   const roomRules = useMemo(() => currentRulesOf(roomTimeline), [roomTimeline])
-  const knockoutScoreList = useMemo(() => knockoutScores(bracket), [bracket])
   const teamStandings = useMemo(
     () => calculateTeamStandings(groups, liveFixtures, roomTimeline, awards, qualifierIds, odds, schedule, knockoutScoreList),
     [awards, groups, knockoutScoreList, liveFixtures, odds, qualifierIds, roomTimeline, schedule],
@@ -631,6 +634,7 @@ function RoomReveal({
         playerStats={playerStats}
         bracket={bracket}
         bracketLoaded={bracketLoaded}
+        knockoutScoreList={knockoutScoreList}
         projectionMode={projectionMode}
         onProjectionMode={onProjectionMode}
         isPublic

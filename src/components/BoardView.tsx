@@ -15,8 +15,7 @@ import {
 import { calculateFinalProjections, type MatchProb, type ProjectionMode } from '../logic/projection'
 import type { AwardSettings, Group, GroupCode, Match, Member, Rules, TeamSelection, TeamStanding } from '../types'
 import type { PlayerStat } from '../lib/api'
-import type { BracketMatch, BracketRound, BracketTeam } from '../lib/bracket'
-import { knockoutScores } from '../lib/bracket'
+import type { BracketMatch, BracketRound, BracketTeam, KnockoutScore } from '../lib/bracket'
 import { ProjectionGraph } from './ProjectionGraph'
 import { GoogleMatchCard, KnockoutMatchCard } from './GoogleMatchCard'
 import { TeamDetailModal } from './TeamDetailModal'
@@ -43,6 +42,7 @@ export type BoardViewProps = {
   playerStats: Record<string, PlayerStat>
   bracket: BracketRound[] | null
   bracketLoaded: boolean
+  knockoutScoreList: KnockoutScore[]
   projectionMode: ProjectionMode
   onProjectionMode: (mode: ProjectionMode) => void
   isPublic?: boolean
@@ -66,6 +66,7 @@ export function BoardView({
   playerStats,
   bracket,
   bracketLoaded,
+  knockoutScoreList,
   projectionMode,
   onProjectionMode,
   isPublic = false,
@@ -109,7 +110,6 @@ export function BoardView({
     }
     return ids
   }, [bracket])
-  const knockoutScoreList = useMemo(() => knockoutScores(bracket), [bracket])
   const selectedPublicMatch = useMemo(
     () => activeMatches.find((match) => match.id === selectedPublicMatchId) || activeMatches[0] || liveFixtures[0],
     [activeMatches, liveFixtures, selectedPublicMatchId],
