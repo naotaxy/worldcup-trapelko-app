@@ -28,6 +28,36 @@ const playerInfoByJa: Record<string, { en: string; photo?: string; heightCm?: nu
 for (const [en, v] of Object.entries(playerInfoJa)) {
   if (v.ja && !playerInfoByJa[v.ja]) playerInfoByJa[v.ja] = { en, photo: v.photo, heightCm: v.heightCm, dob: v.dob }
 }
+const playerInfoByNormEnglish = buildPlayerInfoByNormEnglish()
+
+type NameAliases = {
+  full: Set<string>
+  surname: Set<string>
+  initialSurname: Set<string>
+}
+
+type PlayerInfoLookup = {
+  ja: string
+  club?: string
+}
+
+type SquadCandidate = {
+  player: PdfPlayer
+  aliases: NameAliases
+}
+
+type PlayerStatEntry = {
+  key: string
+  stat: PlayerStat
+  displayName: string
+  aliases: NameAliases
+}
+
+type TeamPlayerStatMatches = {
+  entries: PlayerStatEntry[]
+  playerByStatKey: Map<string, PdfPlayer>
+  statByPlayer: Map<PdfPlayer, PlayerStat>
+}
 
 export type TeamDetailNextMatch = {
   date: string
@@ -73,18 +103,14 @@ export function TeamDetailModal({
     MF: players.filter((player) => player.pos === 'MF'),
     FW: players.filter((player) => player.pos === 'FW'),
   }
-  // Every ESPN-recorded event for THIS team (goals / cards / own goals), shown
-  // directly so each scorer and carded player appears even when their PDF
-  // (katakana) name does not bridge to the English ESPN name. Use the katakana
-  // squad name when we can match it, otherwise the ESPN name.
-  const squadJaByNorm = new Map<string, string>()
-  for (const member of players) {
-    const en = playerInfoByJa[member.name]?.en
-    if (en) squadJaByNorm.set(normName(en), member.name)
-  }
-  const recorded = Object.values(playerStats)
-    .filter((s) => s.abbr === team.shortName && (s.goals || 0) + (s.yellow || 0) + (s.red || 0) + (s.own || 0) > 0)
-    .map((s) => ({ ...s, label: squadJaByNorm.get(normName(s.name || '')) || s.name || '?' }))
+  const teamPlayerStats = buildTeamPlayerStatMatches(team, players, playerStats)
+  const recorded = teamPlayerStats.entries
+    .filter(({ stat }) => (stat.goals || 0) + (stat.yellow || 0) + (stat.red || 0) + (stat.own || 0) > 0)
+    .map(({ key, stat, displayName }) => ({
+      ...stat,
+      key,
+      label: teamPlayerStats.playerByStatKey.get(key)?.name || japaneseNameForEnglish(displayName) || stat.name || '?',
+    }))
     .sort((a, b) => (b.goals || 0) - (a.goals || 0) || (b.red || 0) - (a.red || 0) || (b.yellow || 0) - (a.yellow || 0))
   const { lang, tz } = useSettings()
   const t = useT()
@@ -190,7 +216,7 @@ export function TeamDetailModal({
             <h4>{t('試合の記録（予選・決勝T、自動取得）')}</h4>
             <ul className="team-record-list">
               {recorded.map((r) => (
-                <li key={r.name || r.label}>
+                <li key={r.key}>
                   <span>{r.label}</span>
                   <strong>
                     {[
@@ -216,7 +242,7 @@ export function TeamDetailModal({
                 <span className="squad-pos-label">{positionLabels[position]}</span>
                 <div className="player-chip-grid">
                   {grouped[position].map((player) => (
-                    <PlayerChip key={`${player.name}-${player.club ?? ''}`} player={player} playerStats={playerStats} />
+                    <PlayerChip key={`${player.name}-${player.club ?? ''}`} player={player} stat={teamPlayerStats.statByPlayer.get(player)} />
                   ))}
                 </div>
               </div>
@@ -239,13 +265,12 @@ export function TeamDetailModal({
   )
 }
 
-function PlayerChip({ player, playerStats }: { player: PdfPlayer; playerStats: Record<string, PlayerStat> }) {
+function PlayerChip({ player, stat }: { player: PdfPlayer; stat?: PlayerStat }) {
   const info = playerInfoByJa[player.name]
   const age = info?.dob ? playerAge(info.dob) : null
   const bio = [age != null ? `${age}歳` : null, info?.heightCm ? `${info.heightCm}cm` : null, player.club || null]
     .filter(Boolean)
     .join(' / ')
-  const stat = info?.en ? playerStats[normName(info.en)] : undefined
   const statParts: string[] = []
   if (stat?.goals) statParts.push(`得点${stat.goals}`)
   if (stat?.own) statParts.push(`OG${stat.own}`)
@@ -278,6 +303,251 @@ function normName(s: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]/g, '')
+}
+
+function buildTeamPlayerStatMatches(team: Team, players: PdfPlayer[], playerStats: Record<string, PlayerStat>): TeamPlayerStatMatches {
+  const candidates: SquadCandidate[] = players
+    .map((player) => {
+      const en = playerInfoByJa[player.name]?.en
+      return en ? { player, aliases: nameAliases(en) } : null
+    })
+    .filter((candidate): candidate is SquadCandidate => Boolean(candidate))
+  const entries: PlayerStatEntry[] = Object.entries(playerStats)
+    .filter(([, stat]) => stat.abbr === team.shortName)
+    .map(([key, stat]) => ({
+      key,
+      stat,
+      displayName: stat.name || key,
+      aliases: nameAliases(stat.name || key),
+    }))
+  const playerByStatKey = new Map<string, PdfPlayer>()
+  const statByPlayer = new Map<PdfPlayer, PlayerStat>()
+  const usedStats = new Set<string>()
+  const usedPlayers = new Set<PdfPlayer>()
+  const tiers: Array<keyof NameAliases> = ['full', 'surname', 'initialSurname']
+
+  for (const tier of tiers) {
+    const index = uniqueCandidateIndex(
+      candidates.filter((candidate) => !usedPlayers.has(candidate.player)),
+      tier,
+    )
+
+    for (const entry of entries) {
+      if (usedStats.has(entry.key)) continue
+      const candidate = findUniqueCandidate(entry.aliases[tier], index, usedPlayers)
+      if (!candidate) continue
+
+      playerByStatKey.set(entry.key, candidate.player)
+      statByPlayer.set(candidate.player, entry.stat)
+      usedStats.add(entry.key)
+      usedPlayers.add(candidate.player)
+    }
+  }
+
+  for (const entry of entries) {
+    if (usedStats.has(entry.key)) continue
+    const candidate = findUniqueJapaneseCandidate(entry.displayName, candidates, usedPlayers)
+    if (!candidate) continue
+
+    playerByStatKey.set(entry.key, candidate.player)
+    statByPlayer.set(candidate.player, entry.stat)
+    usedStats.add(entry.key)
+    usedPlayers.add(candidate.player)
+  }
+
+  return { entries, playerByStatKey, statByPlayer }
+}
+
+function uniqueCandidateIndex(candidates: SquadCandidate[], tier: keyof NameAliases): Map<string, SquadCandidate> {
+  const buckets = new Map<string, SquadCandidate[]>()
+  for (const candidate of candidates) {
+    for (const alias of candidate.aliases[tier]) {
+      const bucket = buckets.get(alias)
+      if (bucket) bucket.push(candidate)
+      else buckets.set(alias, [candidate])
+    }
+  }
+
+  const index = new Map<string, SquadCandidate>()
+  for (const [alias, bucket] of buckets) {
+    const uniquePlayers = new Set(bucket.map((candidate) => candidate.player))
+    if (uniquePlayers.size === 1) index.set(alias, bucket[0])
+  }
+  return index
+}
+
+function findUniqueCandidate(
+  aliases: Set<string>,
+  index: Map<string, SquadCandidate>,
+  usedPlayers: Set<PdfPlayer>,
+): SquadCandidate | null {
+  const matches = new Set<SquadCandidate>()
+  for (const alias of aliases) {
+    const candidate = index.get(alias)
+    if (candidate && !usedPlayers.has(candidate.player)) matches.add(candidate)
+  }
+  return matches.size === 1 ? [...matches][0] : null
+}
+
+function findUniqueJapaneseCandidate(name: string, candidates: SquadCandidate[], usedPlayers: Set<PdfPlayer>): SquadCandidate | null {
+  const info = playerInfoForEnglish(name)
+  if (!info) return null
+  const targetName = normalizeJapanese(info.ja)
+  if (!targetName) return null
+  const scored = candidates
+    .filter((candidate) => !usedPlayers.has(candidate.player))
+    .map((candidate) => {
+      const squadName = normalizeJapanese(candidate.player.name)
+      const nameScore = japaneseSimilarity(targetName, squadName)
+      const clubMatch = clubsMatch(info.club, candidate.player.club)
+      const accepted = targetName === squadName || nameScore >= 0.78 || (clubMatch && nameScore >= 0.45)
+      return accepted ? { candidate, score: nameScore + (clubMatch ? 0.25 : 0) + (targetName === squadName ? 0.5 : 0) } : null
+    })
+    .filter((candidate): candidate is { candidate: SquadCandidate; score: number } => Boolean(candidate))
+    .sort((a, b) => b.score - a.score)
+
+  if (scored.length === 0) return null
+  const [best, second] = scored
+  if (second && best.score - second.score < 0.12) return null
+  return best.candidate
+}
+
+function nameAliases(name: string): NameAliases {
+  const tokens = nameTokens(name)
+  return {
+    full: fullNameAliases(name, tokens),
+    surname: surnameAliases(tokens),
+    initialSurname: initialSurnameAliases(tokens),
+  }
+}
+
+function fullNameAliases(name: string, tokens = nameTokens(name)): Set<string> {
+  const aliases = new Set<string>()
+  const direct = normName(name)
+  if (direct) aliases.add(direct)
+  if (tokens.length > 1) {
+    aliases.add(tokens.join(''))
+    aliases.add([...tokens.slice(1), tokens[0]].join(''))
+    aliases.add([tokens[tokens.length - 1], ...tokens.slice(0, -1)].join(''))
+  }
+  return aliases
+}
+
+function surnameAliases(tokens: string[]): Set<string> {
+  const aliases = new Set<string>()
+  if (tokens.length === 0) return aliases
+  aliases.add(tokens[tokens.length - 1])
+  return aliases
+}
+
+function initialSurnameAliases(tokens: string[]): Set<string> {
+  const aliases = new Set<string>()
+  if (tokens.length < 2) return aliases
+  for (const surname of surnamePartsFromEnd(tokens)) aliases.add(`${tokens[0].slice(0, 1)}${surname}`)
+  return aliases
+}
+
+function surnamePartsFromEnd(tokens: string[]): string[] {
+  const last = tokens[tokens.length - 1]
+  const parts = [last]
+  if (tokens.length > 2) {
+    const previous = tokens[tokens.length - 2]
+    if (isSurnameParticle(previous)) parts.push(`${previous}${last}`)
+  }
+  return parts
+}
+
+function isSurnameParticle(token: string): boolean {
+  return ['al', 'da', 'de', 'del', 'di', 'dos', 'du', 'el', 'la', 'le', 'lo', 'mac', 'mc', 'van', 'von'].includes(token)
+}
+
+function nameTokens(name: string): string[] {
+  return (name || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+}
+
+function buildPlayerInfoByNormEnglish(): Map<string, PlayerInfoLookup> {
+  const buckets = new Map<string, Map<string, PlayerInfoLookup>>()
+  for (const [en, info] of Object.entries(playerInfoJa)) {
+    if (!info.ja) continue
+    for (const alias of fullNameAliases(en)) {
+      const bucket = buckets.get(alias)
+      const value = { ja: info.ja, club: info.club }
+      const key = `${value.ja}\0${value.club ?? ''}`
+      if (bucket) bucket.set(key, value)
+      else buckets.set(alias, new Map([[key, value]]))
+    }
+  }
+
+  const lookup = new Map<string, PlayerInfoLookup>()
+  for (const [alias, values] of buckets) {
+    if (values.size === 1) lookup.set(alias, [...values.values()][0])
+  }
+  return lookup
+}
+
+function playerInfoForEnglish(name: string): PlayerInfoLookup | undefined {
+  const matches = new Map<string, PlayerInfoLookup>()
+  for (const alias of fullNameAliases(name)) {
+    const info = playerInfoByNormEnglish.get(alias)
+    if (info) matches.set(`${info.ja}\0${info.club ?? ''}`, info)
+  }
+  return matches.size === 1 ? [...matches.values()][0] : undefined
+}
+
+function japaneseNameForEnglish(name: string): string | undefined {
+  const labels = new Set<string>()
+  for (const alias of fullNameAliases(name)) {
+    const info = playerInfoByNormEnglish.get(alias)
+    if (info) labels.add(info.ja)
+  }
+  return labels.size === 1 ? [...labels][0] : undefined
+}
+
+function normalizeJapanese(value?: string): string {
+  return (value || '')
+    .normalize('NFKC')
+    .replace(/[A-Za-z]+/g, '')
+    .replace(/[・=＝\s()（）]/g, '')
+    .replace(/[ーｰ]/g, '')
+    .replace(/[ッっ]/g, '')
+}
+
+function clubsMatch(a?: string, b?: string): boolean {
+  const left = normalizeJapanese(a)
+  const right = normalizeJapanese(b)
+  if (!left || !right) return false
+  return left === right || (Math.min(left.length, right.length) >= 4 && (left.includes(right) || right.includes(left)))
+}
+
+function japaneseSimilarity(a: string, b: string): number {
+  if (!a || !b) return 0
+  return 1 - editDistance(a, b) / Math.max(a.length, b.length)
+}
+
+function editDistance(a: string, b: string): number {
+  const previous = Array.from({ length: b.length + 1 }, (_, index) => index)
+  const current = Array.from({ length: b.length + 1 }, () => 0)
+
+  for (let i = 1; i <= a.length; i += 1) {
+    current[0] = i
+    for (let j = 1; j <= b.length; j += 1) {
+      current[j] = Math.min(
+        previous[j] + 1,
+        current[j - 1] + 1,
+        previous[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      )
+    }
+    previous.splice(0, previous.length, ...current)
+  }
+
+  return previous[b.length]
 }
 
 function playerAge(dob: string): number | null {
