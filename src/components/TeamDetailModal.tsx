@@ -51,6 +51,8 @@ type PlayerStatEntry = {
   stat: PlayerStat
   displayName: string
   aliases: NameAliases
+  katakanaName?: string
+  normalizedKatakana: string
 }
 
 type TeamPlayerStatMatches = {
@@ -306,20 +308,24 @@ function normName(s: string): string {
 }
 
 function buildTeamPlayerStatMatches(team: Team, players: PdfPlayer[], playerStats: Record<string, PlayerStat>): TeamPlayerStatMatches {
-  const candidates: SquadCandidate[] = players
-    .map((player) => {
-      const en = playerInfoByJa[player.name]?.en
-      return en ? { player, aliases: nameAliases(en) } : null
-    })
-    .filter((candidate): candidate is SquadCandidate => Boolean(candidate))
+  const candidates: SquadCandidate[] = players.map((player) => ({
+    player,
+    aliases: nameAliases(playerInfoByJa[player.name]?.en || ''),
+  }))
   const entries: PlayerStatEntry[] = Object.entries(playerStats)
     .filter(([, stat]) => stat.abbr === team.shortName)
-    .map(([key, stat]) => ({
-      key,
-      stat,
-      displayName: stat.name || key,
-      aliases: nameAliases(stat.name || key),
-    }))
+    .map(([key, stat]) => {
+      const displayName = stat.name || key
+      const katakanaName = japaneseNameForEnglish(displayName)
+      return {
+        key,
+        stat,
+        displayName,
+        aliases: nameAliases(displayName),
+        katakanaName,
+        normalizedKatakana: normalizeKatakanaForFuzzy(katakanaName),
+      }
+    })
   const playerByStatKey = new Map<string, PdfPlayer>()
   const statByPlayer = new Map<PdfPlayer, PlayerStat>()
   const usedStats = new Set<string>()
@@ -344,6 +350,8 @@ function buildTeamPlayerStatMatches(team: Team, players: PdfPlayer[], playerStat
     }
   }
 
+  applyKatakanaFuzzyMatches(candidates, entries, usedPlayers, usedStats, playerByStatKey, statByPlayer)
+
   for (const entry of entries) {
     if (usedStats.has(entry.key)) continue
     const candidate = findUniqueJapaneseCandidate(entry.displayName, candidates, usedPlayers)
@@ -356,6 +364,50 @@ function buildTeamPlayerStatMatches(team: Team, players: PdfPlayer[], playerStat
   }
 
   return { entries, playerByStatKey, statByPlayer }
+}
+
+function applyKatakanaFuzzyMatches(
+  candidates: SquadCandidate[],
+  entries: PlayerStatEntry[],
+  usedPlayers: Set<PdfPlayer>,
+  usedStats: Set<string>,
+  playerByStatKey: Map<string, PdfPlayer>,
+  statByPlayer: Map<PdfPlayer, PlayerStat>,
+): void {
+  const statEntriesByKatakana = new Map<string, PlayerStatEntry[]>()
+  for (const entry of entries) {
+    if (usedStats.has(entry.key) || !entry.normalizedKatakana) continue
+    const bucket = statEntriesByKatakana.get(entry.normalizedKatakana)
+    if (bucket) bucket.push(entry)
+    else statEntriesByKatakana.set(entry.normalizedKatakana, [entry])
+  }
+  const statForms = [...statEntriesByKatakana.values()].flat()
+  const accepted = candidates
+    .filter((candidate) => !usedPlayers.has(candidate.player))
+    .map((candidate) => {
+      const squadKana = normalizeKatakanaForFuzzy(candidate.player.name)
+      if (!squadKana) return null
+      const scored = statForms
+        .map((entry) => ({
+          entry,
+          score: japaneseSimilarity(squadKana, entry.normalizedKatakana),
+        }))
+        .sort((a, b) => b.score - a.score)
+      if (scored.length === 0) return null
+      const [best, second] = scored
+      if (best.score < 0.62 || (second && best.score - second.score < 0.1)) return null
+      return { candidate, entry: best.entry, score: best.score }
+    })
+    .filter((match): match is { candidate: SquadCandidate; entry: PlayerStatEntry; score: number } => Boolean(match))
+    .sort((a, b) => b.score - a.score)
+
+  for (const match of accepted) {
+    if (usedPlayers.has(match.candidate.player) || usedStats.has(match.entry.key)) continue
+    playerByStatKey.set(match.entry.key, match.candidate.player)
+    statByPlayer.set(match.candidate.player, match.entry.stat)
+    usedStats.add(match.entry.key)
+    usedPlayers.add(match.candidate.player)
+  }
 }
 
 function uniqueCandidateIndex(candidates: SquadCandidate[], tier: keyof NameAliases): Map<string, SquadCandidate> {
@@ -400,7 +452,7 @@ function findUniqueJapaneseCandidate(name: string, candidates: SquadCandidate[],
       const squadName = normalizeJapanese(candidate.player.name)
       const nameScore = japaneseSimilarity(targetName, squadName)
       const clubMatch = clubsMatch(info.club, candidate.player.club)
-      const accepted = targetName === squadName || nameScore >= 0.78 || (clubMatch && nameScore >= 0.45)
+      const accepted = targetName === squadName || nameScore >= 0.78 || (clubMatch && nameScore >= 0.4)
       return accepted ? { candidate, score: nameScore + (clubMatch ? 0.25 : 0) + (targetName === squadName ? 0.5 : 0) } : null
     })
     .filter((candidate): candidate is { candidate: SquadCandidate; score: number } => Boolean(candidate))
@@ -508,6 +560,27 @@ function japaneseNameForEnglish(name: string): string | undefined {
     if (info) labels.add(info.ja)
   }
   return labels.size === 1 ? [...labels][0] : undefined
+}
+
+const smallKanaFold: Record<string, string> = {
+  ッ: 'ツ',
+  ャ: 'ヤ',
+  ュ: 'ユ',
+  ョ: 'ヨ',
+  ァ: 'ア',
+  ィ: 'イ',
+  ゥ: 'ウ',
+  ェ: 'エ',
+  ォ: 'オ',
+}
+
+function normalizeKatakanaForFuzzy(value?: string): string {
+  return (value || '')
+    .normalize('NFKD')
+    .replace(/[\u3099\u309a]/g, '')
+    .replace(/[・･\s]/g, '')
+    .replace(/[ーｰ]/g, '')
+    .replace(/[ッャュョァィゥェォ]/g, (kana) => smallKanaFold[kana] || kana)
 }
 
 function normalizeJapanese(value?: string): string {
