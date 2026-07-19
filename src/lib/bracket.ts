@@ -357,8 +357,10 @@ export function knockoutScores(bracket: BracketRound[] | null): KnockoutScore[] 
         awayOwnGoals: e?.awayOwnGoals ?? 0,
         homeHatTricks: e?.homeHatTricks ?? 0,
         awayHatTricks: e?.awayHatTricks ?? 0,
-        homeSixGoals: e?.homeSixGoals ?? 0,
-        awaySixGoals: e?.awaySixGoals ?? 0,
+        // 「6得点でハット2倍」用のフラグは、選手別イベント集計(取りこぼしうる)ではなく
+        // 権威的な最終スコアから算出する。決勝Tでイベントが不完全でも6得点判定が正しく効く。
+        homeSixGoals: home.score >= 6 ? 1 : e?.homeSixGoals ?? 0,
+        awaySixGoals: away.score >= 6 ? 1 : e?.awaySixGoals ?? 0,
       })
     }
   }
