@@ -321,6 +321,15 @@ export type KnockoutScore = {
   awaySixGoals: number
 }
 
+// 決勝Tでイベントパーサ(ESPN summary)が取りこぼした事象の手動補正。出典は複数ソースで確認し
+// collab-logに記録。キーは `${homeTeamId}__${awayTeamId}`(決勝Tでは同一カードは一度のみ)。
+// 2026決勝 spain 1-0 argentina: パレデスが試合終了後の乱闘で一発退場→アルゼンチンは赤2枚
+// (エンソ2枚目退場+パレデス)。ESPN summaryは試合後カードを含まず赤1のまま→赤2に補正し
+// 「1試合で赤2枚→ペナルティ2倍」ルールを正しく発火させる。
+const knockoutManualCorrections: Record<string, Partial<KnockoutScore>> = {
+  spain__argentina: { awayRedCards: 2 },
+}
+
 export function knockoutScores(bracket: BracketRound[] | null): KnockoutScore[] {
   const out: KnockoutScore[] = []
   for (const round of bracket ?? []) {
@@ -341,7 +350,7 @@ export function knockoutScores(bracket: BracketRound[] | null): KnockoutScore[] 
         }
       }
       const e = match.events
-      out.push({
+      const score: KnockoutScore = {
         homeTeamId: home.teamId,
         awayTeamId: away.teamId,
         kickoff: match.date,
@@ -361,7 +370,9 @@ export function knockoutScores(bracket: BracketRound[] | null): KnockoutScore[] 
         // 権威的な最終スコアから算出する。決勝Tでイベントが不完全でも6得点判定が正しく効く。
         homeSixGoals: home.score >= 6 ? 1 : e?.homeSixGoals ?? 0,
         awaySixGoals: away.score >= 6 ? 1 : e?.awaySixGoals ?? 0,
-      })
+      }
+      const correction = knockoutManualCorrections[`${home.teamId}__${away.teamId}`]
+      out.push(correction ? { ...score, ...correction } : score)
     }
   }
   return out
